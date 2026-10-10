@@ -7,6 +7,9 @@ fisheye domemaster (bottom of frame = front, centre = zenith).
   time + `params.json`, so any frame renders identically on any machine,
   at any resolution.
 * `params.json` — every knob. Tweak, commit, re-render.
+* `lattice.py` — builds the growth graph (seeded shortest-path tree on a sparse
+  cubic lattice) from `params.json`; uploaded to the shader as a 3D texture.
+  Same seed + params = same graph, every time.
 * `render.py` — headless renderer (moderngl, OpenGL 3.3).
 
 ```
@@ -21,7 +24,7 @@ On a desktop GPU drop `backend="egl"` in `Renderer.__init__` if EGL
 isn't available (macOS: use `moderngl.create_standalone_context()`).
 
 ## Sections
-1. Seed (0:00–0:45) — star at zenith grows into a cool, ordered lattice. ✅ v1
+1. Seed (0:00–0:45) — star at zenith grows into a cool, ordered lattice. ✅ v2
 2. First tug — a tangent breaks away and returns warm.
 3. Escalation + hyperfocus bloom.
 4. Overload → darkness.

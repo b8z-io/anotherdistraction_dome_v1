@@ -17,15 +17,9 @@ import numpy as np
 import moderngl
 from PIL import Image, ImageDraw, ImageFont
 
+import lattice
+
 ROOT = Path(__file__).resolve().parent
-
-
-def euler_to_mat(deg):
-    x, y, z = (math.radians(v) for v in deg)
-    rx = np.array([[1, 0, 0], [0, math.cos(x), -math.sin(x)], [0, math.sin(x), math.cos(x)]])
-    ry = np.array([[math.cos(y), 0, math.sin(y)], [0, 1, 0], [-math.sin(y), 0, math.cos(y)]])
-    rz = np.array([[math.cos(z), -math.sin(z), 0], [math.sin(z), math.cos(z), 0], [0, 0, 1]])
-    return rz @ ry @ rx
 
 
 def smooth(x):
@@ -37,14 +31,11 @@ def envelope(P, t):
     """Time-dependent values. Kept here so the shader stays a pure function."""
     g = P["growth"]
     u = (t - g["start_s"]) / (g["end_s"] - g["start_s"])
-    front = -1.0 if u <= 0 else g["end_radius"] * min(u, 1.0) ** g["curve_power"]
+    front = -1.0 if u <= 0 else g["end_path"] * min(u, 1.0) ** g["curve_power"]
     s = P["seed_point"]
     a, b = s["star_fade_in_s"]
     star = s["star_intensity"] * smooth((t - a) / max(b - a, 1e-6))
-    L = P["lattice"]
-    a2, b2 = L["crosslink_ramp_s"]
-    cross = L["crosslink_density"] * smooth((t - a2) / max(b2 - a2, 1e-6))
-    return {"uFront": front, "uStar": star, "uCross": cross}
+    return {"uFront": front, "uStar": star}
 
 
 class Renderer:
@@ -61,15 +52,20 @@ class Renderer:
         self.vao = self.ctx.vertex_array(self.prog, [(self.ctx.buffer(quad), "2f", "in_pos")])
         self.fbo = self.ctx.simple_framebuffer((self.w, self.h), components=4)
         o, L, S, look, R = P["output"], P["lattice"], P["seed_point"], P["look"], P["render"]
+        tex, H, rot, self.stats = lattice.build(P)
+        n = 2 * H + 1
+        self.graph = self.ctx.texture3d((n, n, n), 4, tex.tobytes(), dtype="f4")
+        self.graph.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        self.graph.use(0)
         static = {
             "uRes": (self.w, self.h),
             "uProj": 1 if proj == "equirect" else 0,
             "uFov": o["fov_deg"], "uTilt": o["tilt_deg"], "uSS": ss,
             "uSeed": float(P["seed"]),
-            "uLatRot": tuple(euler_to_mat(L["rotation_deg"]).T.flatten()),
+            "uLatRot": tuple(rot.T.flatten()),
             "uCell": L["cell"], "uStrutR": L["strut_radius"], "uNodeR": L["node_radius"],
-            "uJitter": L["reveal_jitter_cells"], "uAlive": L["site_density"], "uVoid": L["audience_void_radius"],
-            "uSeedPos": tuple(S["position"]), "uStarSize": S["star_size_rad"],
+            "uGraph": 0, "uGridH": H, "uExtent": L["extent"], "uXDelay": L["crosslink_delay"],
+            "uSeedPos": tuple(self.stats["root_world"]), "uStarSize": S["star_size_rad"],
             "uColDeep": tuple(look["col_deep"]), "uColStrut": tuple(look["col_strut"]),
             "uColTip": tuple(look["col_tip"]), "uGlow": look["glow"], "uGlowW": look["glow_width"],
             "uTipGlow": look["tip_glow"], "uFogDist": look["fog_distance"], "uExposure": look["exposure"],
