@@ -45,8 +45,8 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 Python 3.10+ and any GPU with OpenGL 3.3 (Mac: built-in OpenGL 4.1 is fine).
 
 ```bash
-git clone git@github.com:b8z-io/another-distraction.git
-cd another-distraction
+git clone git@github.com:b8z-io/anotherdistraction_dome_v1.git
+cd anotherdistraction_dome_v1
 python3 -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
