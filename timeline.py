@@ -154,7 +154,8 @@ class Timeline:
         # a lateral swing out, a loop around the far point, and a curve back in
         side = np.cross(far - src, [0, 1, 0]); side /= np.linalg.norm(side) + 1e-9
         up = np.cross(side, far - src); up /= np.linalg.norm(up) + 1e-9
-        jitter = lambda s: rng.normal(0, s, 3)
+        # uniform (same spread as a normal of std s): simple to reproduce exactly in the browser playground
+        jitter = lambda s: (rng.random(3) * 2 - 1) * s * 1.7320508075688772
         pts = [
             src,
             src + (far - src) * 0.3 + side * 2.5 + up * 1.5 + jitter(0.8),

@@ -1,0 +1,220 @@
+<title>Another Distraction Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+/* Layout: a planetarium console — the live dome on the left, the instrument rack of settings on the right.
+   Deliberately dark-only: judging a dark dome on a light page would mislead. */
+:root {
+  color-scheme: dark;
+  --bg: #07090d;        /* the room */
+  --panel: #0e1118;     /* the rack */
+  --well: #05070a;      /* insets, the dome well */
+  --line: #1f2533;
+  --fg: #d9dee8;
+  --muted: #8790a3;
+  --accent: #6aa9ff;    /* the lattice's own blue */
+  --mod: #ffb547;       /* changed from the repo */
+  --bad: #ff6b6b;
+  --ok: #7bd88f;
+  --f-ui: "IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+[hidden] { display: none !important; }
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.4 var(--f-ui); margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { background: #161b25; border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: #33405a; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, textarea:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select, input[type=number], input[type=text], textarea { background: var(--well); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
+.brand b { font-weight: 600; font-size: 16px; letter-spacing: 0.01em; }
+.brand span { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+#status { font: 12px var(--f-num); color: var(--muted); min-width: 12ch; }
+#status[data-kind=busy] { color: var(--accent); }
+#status[data-kind=warn] { color: var(--mod); }
+#modcount { font: 12px var(--f-num); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+#modcount[data-mod="1"] { color: var(--mod); border-color: color-mix(in srgb, var(--mod) 50%, transparent); }
+.hbtns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hbtns .primary { background: var(--accent); color: #04101f; border-color: var(--accent); font-weight: 600; }
+.switch { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+
+/* stage */
+.stage { min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; overflow: auto; }
+.view { position: relative; align-self: center; width: min(100%, calc(100vh - 230px)); min-width: 260px; aspect-ratio: 1; background: var(--well); border-radius: 50%; box-shadow: 0 0 0 1px var(--line), 0 30px 80px -40px #1b3a6b; overflow: hidden; }
+#stage[data-proj="1"] .view { aspect-ratio: 2 / 1; width: min(100%, calc((100vh - 230px) * 2)); border-radius: 8px; }
+#dome, #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+#dome { image-rendering: auto; }
+#overlay { pointer-events: none; }
+#err { align-self: center; max-width: 70ch; background: color-mix(in srgb, var(--bad) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); border-radius: 8px; padding: 8px 12px; }
+.transport { display: grid; grid-template-columns: auto auto auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+#play { min-width: 64px; font-weight: 600; }
+.clock { font: 13px var(--f-num); font-variant-numeric: tabular-nums; color: var(--fg); white-space: nowrap; }
+.clock span { color: var(--muted); }
+.track { position: relative; min-width: 0; }
+#scrub { width: 100%; accent-color: var(--accent); }
+#marks { position: absolute; left: 8px; right: 8px; top: -6px; height: 6px; pointer-events: none; }
+.mk { position: absolute; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; border: 2px solid var(--c); }
+.mk.land { background: var(--c); }
+.viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; color: var(--muted); font-size: 13px; }
+.viewbar label { display: inline-flex; align-items: center; gap: 5px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg label { padding: 3px 10px; cursor: pointer; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: #1a2333; color: var(--fg); }
+.seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+#ms, #stats { font: 12px var(--f-num); font-variant-numeric: tabular-nums; }
+#restored { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--mod) 40%, transparent); border-radius: 8px; color: var(--fg); background: color-mix(in srgb, var(--mod) 8%, var(--panel)); }
+
+/* the rack */
+.rack { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; min-width: 0; padding-block: 6px 40px; }
+.grp, .tcard { border-bottom: 1px solid var(--line); }
+summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 8px; padding: 11px 16px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 10px; transition: transform .15s; }
+details[open] > summary::before { transform: rotate(90deg); }
+.gt { font-weight: 600; font-size: 14px; letter-spacing: 0.02em; }
+.gs { color: var(--muted); font-size: 12px; }
+.rows { display: grid; gap: 10px; padding: 2px 16px 16px 34px; }
+.rows h4 { margin: 10px 0 0; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.row { display: grid; gap: 4px; min-width: 0; }
+.lab { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lab label { font-size: 13px; color: #c1c8d6; }
+.row.mod .lab label { color: var(--mod); }
+.row.mod .lab label::after { content: " •"; }
+.reset { visibility: hidden; padding: 0 6px; font-size: 12px; line-height: 18px; border-radius: 4px; color: var(--muted); }
+.row.mod .reset { visibility: visible; }
+.ctl { display: grid; grid-template-columns: minmax(0, 1fr) 76px 22px; align-items: center; gap: 8px; }
+.ctl input[type=range] { width: 100%; accent-color: var(--accent); min-width: 0; }
+.row.mod .ctl input[type=range] { accent-color: var(--mod); }
+.num { width: 76px; font: 12px var(--f-num); font-variant-numeric: tabular-nums; text-align: right; }
+.unit { color: var(--muted); font: 11px var(--f-num); min-width: 0; overflow: hidden; }
+.ctl:has(input[type=color]), .ctl:has(.txt), .ctl:has(select) { grid-template-columns: auto minmax(0, 1fr); }
+.ctl:has(.txt) { grid-template-columns: minmax(0, 1fr); }
+input[type=color] { width: 44px; height: 26px; padding: 0 2px; border: 1px solid var(--line); border-radius: 5px; background: var(--well); }
+.rgb { font: 11px var(--f-num); color: var(--muted); }
+.txt { width: 100%; font: 12px var(--f-num); }
+.txt.bad { border-color: var(--bad); }
+.help { display: none; margin: 0; color: var(--muted); font-size: 12px; max-width: 60ch; }
+body.showhelp .help { display: block; }
+.pair { display: grid; gap: 10px; }
+.keys { display: grid; gap: 6px; }
+.kchart { width: 100%; height: auto; background: var(--well); border: 1px solid var(--line); border-radius: 6px; touch-action: none; }
+.kchart .grid { stroke: var(--line); stroke-width: 1; }
+.kchart .axis { fill: var(--muted); font: 8px var(--f-num); }
+.kchart .curve { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.row.mod .kchart .curve { stroke: var(--mod); }
+.kchart .playhead { stroke: #ffffff55; stroke-width: 1; }
+.kchart .key { fill: var(--well); stroke: var(--fg); stroke-width: 1.5; cursor: grab; }
+.klist { font-size: 11px; }
+.tsec { border-bottom: 1px solid var(--line); }
+.tsec-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 14px 16px 6px; }
+.tsec-h h3 { margin: 0; font-size: 14px; letter-spacing: 0.02em; }
+.tsec-h button { margin-left: auto; }
+.tcard { border-bottom: none; border-top: 1px solid var(--line); }
+.tcard summary { padding-left: 24px; }
+.sw { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 10px currentColor; align-self: center; }
+.tbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px 34px; }
+.tbar button { font-size: 12px; padding: 3px 8px; }
+.tbar .danger { color: var(--bad); }
+.picker { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; }
+.picker canvas { touch-action: none; cursor: crosshair; border-radius: 50%; }
+.readout { display: grid; gap: 4px; font: 11px var(--f-num); color: var(--muted); }
+.readout b { color: var(--fg); font-weight: 500; }
+
+/* import / export */
+#io { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; padding: 16px; z-index: 5; }
+.iobox { width: min(720px, 100%); max-height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.iobox h2 { margin: 0; font: 600 16px var(--f-num); }
+#io-hint { margin: 0; color: var(--muted); }
+#io-text { width: 100%; min-height: 50vh; font: 12px/1.45 var(--f-num); resize: vertical; box-sizing: border-box; }
+.iobtns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; height: auto; }
+  .rack { border-left: none; border-top: 1px solid var(--line); overflow: visible; }
+  .view { width: min(100%, 92vw); }
+  .transport { grid-template-columns: auto auto auto minmax(0, 1fr); }
+  .transport .clock { grid-column: 1 / -1; order: -1; }
+}
+@media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand"><b>Another Distraction</b><span>Playground</span></div>
+    <span id="status" role="status" aria-live="polite">Starting…</span>
+    <span id="modcount" data-mod="0">matches the repo</span>
+    <div class="hbtns">
+      <label class="switch"><input type="checkbox" id="helpt"> Descriptions</label>
+      <button type="button" id="dice" title="Grow a different lattice">New seed</button>
+      <button type="button" id="import">Load…</button>
+      <button type="button" id="resetall">Reset all</button>
+      <button type="button" id="export" class="primary">Export params.json</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage" data-proj="0">
+    <div id="restored" hidden>
+      <span>Picked up where you left off in this browser.</span>
+      <button type="button" id="restored-reset">Start from the repo's settings</button>
+      <button type="button" id="restored-close">Keep my changes</button>
+    </div>
+    <div class="view">
+      <canvas id="dome" width="384" height="384" aria-label="Live domemaster preview: centre is the zenith, bottom edge is the front"></canvas>
+      <canvas id="overlay" aria-hidden="true"></canvas>
+    </div>
+    <div id="err" role="alert" hidden></div>
+    <div class="transport">
+      <button type="button" id="play" aria-pressed="false">Play</button>
+      <button type="button" id="back" title="Back 5 s (Shift ←)" aria-label="Back 5 seconds">−5s</button>
+      <button type="button" id="fwd" title="Forward 5 s (Shift →)" aria-label="Forward 5 seconds">+5s</button>
+      <div class="clock"><b id="time">0:00.0</b> <span>/ <span id="endt">1:30.0</span></span></div>
+      <div class="track"><div id="marks"></div><input type="range" id="scrub" min="0" max="90" step="0.0333" value="0" aria-label="Time"></div>
+      <label class="switch"><input type="checkbox" id="loop" checked> Loop</label>
+    </div>
+    <div class="viewbar">
+      <div class="seg" role="radiogroup" aria-label="Projection">
+        <label><input type="radio" name="proj" value="0" checked> Dome</label>
+        <label><input type="radio" name="proj" value="1"> VR 2:1</label>
+      </div>
+      <label><input type="checkbox" id="guides" checked> Guides</label>
+      <label>Speed <select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+      <label>Preview <select id="res"><option value="256">256</option><option value="384" selected>384</option><option value="512">512</option><option value="768">768</option><option value="1024">1024</option></select></label>
+      <label>Smoothing <select id="ssq"><option value="1" selected>off</option><option value="2">2×2</option></select></label>
+      <span id="ms" title="Preview frames per second">—</span>
+      <span id="stats"></span>
+    </div>
+  </main>
+
+  <aside class="rack" aria-label="Settings">
+    <div id="panel-groups"></div>
+  </aside>
+</div>
+
+<div id="io" hidden>
+  <div class="iobox" role="dialog" aria-modal="true" aria-labelledby="io-title">
+    <h2 id="io-title">params.json</h2>
+    <p id="io-hint"></p>
+    <textarea id="io-text" spellcheck="false" aria-label="params.json"></textarea>
+    <div class="iobtns">
+      <button type="button" id="io-copy" class="primary">Copy</button>
+      <input type="file" id="io-file" accept=".json,application/json" aria-label="Choose a params.json file">
+      <button type="button" id="io-apply" class="primary">Load these settings</button>
+      <button type="button" id="io-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="params-default">__PARAMS__</script>
+<script type="x-shader/x-fragment" id="frag-src">__SHADER__</script>
+<script>
+__CORE__
+</script>
+<script>
+__APP__
+</script>

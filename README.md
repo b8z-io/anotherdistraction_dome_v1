@@ -26,6 +26,28 @@ front, camera, each tangent's flight, landing and colour spread. The picture
 and the sound both read it, so a tangent's sound comes from where its ribbon
 is, on the exact frame — change a time in `params.json` and both move together.
 
+## Playground
+
+`tools/playground.html` is a live preview with a control for every setting
+in `params.json`: sliders, colour pickers, curve editors for the keyframes,
+and a little dome map for dragging where each tangent breaks away, swings
+out to and lands. Open it straight from disk in Chrome, Safari or Firefox
+(it needs WebGL2); it runs the real shader on your GPU.
+
+* **Export params.json** gives you the settings to drop into the repo;
+  `render.py` and `score.py` then match what you saw. The browser runs a
+  JavaScript port of `lattice.py` and `timeline.py` — numpy's random-number
+  generator included — so the same seed grows the same lattice.
+  `tools/test_parity.js` checks the port against the Python
+  (`python tools/dump_reference.py > ref.json && node tools/test_parity.js ref.json`).
+* Changes are kept in your browser between visits; **Reset all** goes back to
+  the repo's `params.json`.
+* Settings that regrow the lattice or re-route a comet rebuild in a fraction
+  of a second; looks update instantly. Sound settings are exported for
+  `score.py` but not previewed (the page is silent).
+* Rebuild it after changing the shader, the timeline or `params.json`:
+  `python tools/build_playground.py`.
+
 ## How it stays repeatable
 
 * **Every frame is a pure function of `(time, params.json)`.** Nothing is
@@ -53,6 +75,7 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
 | `render.py` | Headless renderer: contact sheets, image sequences, VR previews. |
 | `movie.py` | Stitches a frame folder into H.264 / HEVC / ProRes — bundled ffmpeg, nothing extra to install. |
+| `tools/playground.html` | Live in-browser preview with a control for every setting; exports `params.json`. Built by `tools/build_playground.py` from `tools/playground/`. |
 | `previews/` | Contact sheets and preview clips, versioned by name (`seed_v2_…`). |
 | `frames/` | Rendered image sequences (git-ignored). |
 | `score/` | Generated audio (git-ignored — re-run `score.py`, it's deterministic). |
@@ -237,6 +260,7 @@ tangent, panned to where it appears on the dome (separate stems).
 ## Version history
 
 * **Seed v1** — stateless hash-driven lattice. Issues: ~14s of dead air before growth, orphan fragments floating unconnected, flat white look.
+* **Playground** — browser preview with every setting exposed; tangent paths now use uniform rather than Gaussian jitter (identical in Python and JS), so comet routes shifted very slightly from the v2 preview.
 * **First tug v2** — brighter comets (white-hot core, saturated halo, glowing head), a different vivid colour per tangent (gold, magenta), ribbons paint struts they brush past in flight, bigger multi-hued stains that drift within each colour's family, paint chimes in each tangent's chord.
 * **First tug v1** — shared timeline; camera still through section 1, then a slow rise and gentle turn; two tangents (amber, rose) with landing flashes and colour spreading through the lattice; procedural score (drone, node pings, tangent motifs with pre-cue, whoosh, bloom, pad) in stereo + AmbiX.
 * **Seed v2** — precomputed growth graph (no orphans, growth travels along branches, ~10× faster), first branch by ~8s, true-black sky, cooler struts, brighter tips, 2× supersampling.
