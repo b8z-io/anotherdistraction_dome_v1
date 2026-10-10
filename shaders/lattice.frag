@@ -39,23 +39,29 @@ uniform float uStar;
 uniform float uStarSize;
 
 // ---- colour brought back by tangents (indexed by tangent, max 8)
-uniform sampler3D uSpread0; // path distance from tangent 0..3's landing node
-uniform sampler3D uSpread1; // ...4..7
+uniform float uTime;
+uniform sampler3D uPaint0;  // per node: (arrival s, coverage) for tangents 0,1
+uniform sampler3D uPaint1;  // ...2,3
+uniform sampler3D uPaint2;  // ...4,5
+uniform sampler3D uPaint3;  // ...6,7
 uniform int   uNumT;
-uniform float uSpFront[8];  // how far each colour has travelled (path units, <0 = not yet)
-uniform float uSpLimit[8];  // how far it can ever go
+uniform vec3  uSpCol[8];    // each tangent's own colour
+uniform float uLandT[8];    // when it landed
+uniform float uHueSpread[8];// hue drift across its stain (radians)
+uniform float uHueTime[8];  // ...reached this many seconds after landing
 uniform float uSpPulse[8];  // brightness of the travelling wavefront
-uniform vec3  uSpCol[8];
-uniform float uSpSoft;      // soft edge of the stain (path units)
-uniform float uPulseW;      // width of the wavefront (path units)
+uniform float uSoftT;       // fade-in time as colour arrives at a node (s)
+uniform float uPulseT;      // duration of the wavefront flash at a node (s)
 uniform float uTintAmt;     // how fully the colour replaces the cool base
+uniform float uHueJitter;   // node-to-node hue variation (radians)
+uniform float uVivid;       // brightness of painted struts relative to the base
 
 // ---- ribbons in flight (per active slot, max 4; 24 points each, tail -> head)
 uniform int   uNumRib;
 uniform vec4  uRib[96];     // xyz world, w intensity
 uniform vec4  uRibCol[4];   // rgb, w = width
-uniform vec4  uFlash[4];    // xyz world, w amplitude (landing flash)
-uniform vec3  uFlashCol[4];
+uniform vec4  uFlash[8];    // xyz world, w amplitude (ribbon heads + landing flashes)
+uniform vec4  uFlashCol[8]; // rgb, w = size
 
 // ---- look
 uniform vec3  uColDeep;
@@ -104,6 +110,19 @@ vec3 dirOf(int k) {
     return vec3(a == 0, a == 1, a == 2) * sg;
 }
 
+vec3 hueRot(vec3 c, float a) {
+    const vec3 k = vec3(0.57735027);
+    float ca = cos(a);
+    return max(c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca), 0.0);
+}
+
+vec2 paintOf(ivec3 g, int i) {
+    int t = i / 2, j = i - 2 * t;
+    vec4 v = t == 0 ? texelFetch(uPaint0, g, 0) : t == 1 ? texelFetch(uPaint1, g, 0)
+           : t == 2 ? texelFetch(uPaint2, g, 0) : texelFetch(uPaint3, g, 0);
+    return j == 0 ? v.xy : v.zw;
+}
+
 // Colour carried back by tangents, at one lattice node.
 // Returns premultiplied colour (rgb) + coverage (a); emis = wavefront glow.
 vec4 spreadAt(vec3 id, out vec3 emis) {
@@ -111,18 +130,20 @@ vec4 spreadAt(vec3 id, out vec3 emis) {
     vec4 acc = vec4(0.0);
     ivec3 g = gridOf(id);
     if (uNumT == 0 || !inGrid(g)) return acc;
-    vec4 s0 = texelFetch(uSpread0, g, 0);
-    vec4 s1 = uNumT > 4 ? texelFetch(uSpread1, g, 0) : vec4(-1.0);
     for (int i = 0; i < 8; i++) {
         if (i >= uNumT) break;
-        float d = i < 4 ? s0[i] : s1[i - 4];
-        float F = uSpFront[i];
-        if (d < 0.0 || F < 0.0) continue;
-        float lim = 1.0 - smoothstep(0.6 * uSpLimit[i], uSpLimit[i], d);
-        float w = clamp((F - d) / uSpSoft + 0.5, 0.0, 1.0) * lim * uTintAmt;
-        acc = acc * (1.0 - w) + vec4(uSpCol[i], 1.0) * w;
-        float x = (F - d) / uPulseW;
-        emis += uSpCol[i] * exp(-x * x) * lim * uSpPulse[i];
+        vec2 pc = paintOf(g, i);
+        float arr = pc.x, cov = pc.y;
+        if (arr < 0.0 || uTime < arr - uPulseT * 2.0) continue;
+        float dt = uTime - arr;
+        // hue drifts across the stain (early = the ribbon's own colour), plus a little per node
+        float drift = uHueSpread[i] * clamp((arr - uLandT[i]) / uHueTime[i], -0.4, 1.0);
+        float jit = (hash31(id * 1.37 + float(i) * 7.1) - 0.5) * uHueJitter;
+        vec3 col = hueRot(uSpCol[i], drift + jit);
+        float w = clamp(dt / uSoftT + 0.5, 0.0, 1.0) * cov * uTintAmt;
+        acc = acc * (1.0 - w) + vec4(col, 1.0) * w;
+        float x = dt / uPulseT;
+        emis += col * exp(-x * x) * cov * uSpPulse[i];
     }
     return acc;
 }
@@ -168,7 +189,7 @@ float sdLattice(vec3 p, out float tip) {
 
 // colour of the strut surface at p: cool base, blended along the strut
 // between the two nodes' carried-back colours
-vec3 strutColour(vec3 p, float tip, out vec3 emis) {
+vec3 strutColour(vec3 p, float tip, out vec3 emis, out float painted) {
     float c = uCell;
     vec3 id = floor(p / c + 0.5);
     vec3 q = p - id * c;
@@ -182,7 +203,8 @@ vec3 strutColour(vec3 p, float tip, out vec3 emis) {
     vec4 s = mix(s0, s1, h);
     emis = mix(e0, e1, h);
     vec3 base = mix(uColStrut, uColTip, clamp(tip * 1.5, 0.0, 1.0));
-    return base * (1.0 - s.a) + s.rgb * 0.95;
+    painted = s.a;
+    return base * (1.0 - s.a) + s.rgb * uVivid;
 }
 
 vec3 viewDir(vec2 frag) {
@@ -220,26 +242,28 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
     for (int r = 0; r < 4; r++) {
         if (r >= uNumRib) break;
         float w = uRibCol[r].w;
-        float best = 0.0;
+        float core = 0.0, halo = 0.0;
         for (int i = 0; i < K - 1; i++) {
             vec4 a = uRib[r * K + i], b = uRib[r * K + i + 1];
             float tr, h;
             float d = raySeg(ro, rd, a.xyz, b.xyz, tr, h);
             float inten = mix(a.w, b.w, h);
-            float ww = w * (0.35 + 0.65 * mix(float(i), float(i + 1), h) / float(K - 1)); // tapers to the tail
-            float g = inten * (exp(-(d * d) / (ww * ww)) + 0.12 * exp(-d / (ww * 5.0)));
-            if (tr > tHit) g *= 0.1;           // behind a strut
-            best = max(best, g);
+            float ww = w * (0.3 + 0.7 * mix(float(i), float(i + 1), h) / float(K - 1)); // tapers to the tail
+            float occ = tr > tHit ? 0.15 : 1.0;           // behind a strut
+            core = max(core, inten * occ * exp(-(d * d) / (ww * ww)));
+            halo = max(halo, inten * occ * (0.45 * exp(-(d * d) / (16.0 * ww * ww)) + 0.08 * exp(-d / (ww * 14.0))));
         }
-        col += mix(uRibCol[r].rgb, vec3(1.0), 0.35) * best;
+        col += mix(uRibCol[r].rgb, vec3(1.0), 0.55) * core + uRibCol[r].rgb * halo;
     }
-    // landing flashes
-    for (int f = 0; f < 4; f++) {
+    // glowing heads and landing flashes
+    for (int f = 0; f < 8; f++) {
         if (uFlash[f].w <= 0.0) continue;
         vec3 to = uFlash[f].xyz - ro;
         float dist = length(to);
         float ang = acos(clamp(dot(rd, to / dist), -1.0, 1.0));
-        col += uFlashCol[f] * uFlash[f].w * (exp(-pow(ang * dist / 0.25, 2.0)) + 0.2 * exp(-ang * dist / 1.2));
+        float x = ang * dist / uFlashCol[f].w;          // in units of the flash's world-space size
+        col += uFlash[f].w * (mix(uFlashCol[f].rgb, vec3(1.0), 0.5) * exp(-x * x)
+                              + uFlashCol[f].rgb * (0.35 * exp(-x * x / 9.0) + 0.015 * exp(-x / 3.0)));
     }
     return col;
 }
@@ -276,8 +300,11 @@ vec3 shade(vec3 rdCam) {
             tipg += fog * near * tip;
             if (d < 0.0008 * t) {
                 vec3 emis;
-                vec3 sc = strutColour(p, tip, emis);
-                vec3 base = mix(uColDeep * 2.5, sc, fog);
+                float painted;
+                vec3 sc = strutColour(p, tip, emis, painted);
+                // distant struts sink into deep blue — or, if painted, a deep shade of their own colour
+                vec3 far = mix(uColDeep * 2.5, sc * 0.3, painted);
+                vec3 base = mix(far, sc, fog);
                 hitCol = (base * mix(0.35, 1.0, fog) + emis * fog * 0.35) * near;
                 tHit = t;
                 break;

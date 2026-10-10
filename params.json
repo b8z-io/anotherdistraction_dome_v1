@@ -89,10 +89,7 @@
     "glow_width": 0.06,
     "tip_glow": 2.5,
     "fog_distance": 18.0,
-    "exposure": 0.9,
-    "spread_soft": 3.0,
-    "pulse_width": 2.0,
-    "tint_amount": 1.0
+    "exposure": 0.9
   },
   "render": {
     "steps": 200,
@@ -164,15 +161,15 @@
       ],
       "color": [
         1.0,
-        0.52,
-        0.12
+        0.62,
+        0.04
       ],
-      "width": 0.09,
+      "width": 0.13,
       "trail": 9.0,
-      "intensity": 3.0,
-      "spread_speed": 5.0,
-      "spread_limit": 30.0,
-      "pulse": 2.5,
+      "intensity": 6.0,
+      "spread_speed": 6.0,
+      "spread_limit": 44.0,
+      "pulse": 2.0,
       "precue_s": 1.2,
       "sound": {
         "motif": [
@@ -193,7 +190,12 @@
         "bloom_level": 0.22,
         "thump_level": 0.25,
         "pad_level": 0.15
-      }
+      },
+      "head_glow": 7.0,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "hue_spread_deg": -28,
+      "hue_time_s": 7.0
     },
     {
       "name": "second glance",
@@ -216,15 +218,15 @@
       ],
       "color": [
         1.0,
-        0.28,
-        0.42
+        0.1,
+        0.62
       ],
-      "width": 0.09,
+      "width": 0.12,
       "trail": 6.0,
-      "intensity": 3.0,
-      "spread_speed": 4.0,
-      "spread_limit": 18.0,
-      "pulse": 2.5,
+      "intensity": 6.0,
+      "spread_speed": 5.5,
+      "spread_limit": 36.0,
+      "pulse": 2.0,
       "precue_s": 1.0,
       "sound": {
         "motif": [
@@ -244,7 +246,12 @@
         "bloom_level": 0.2,
         "thump_level": 0.2,
         "pad_level": 0.12
-      }
+      },
+      "head_glow": 7.0,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "hue_spread_deg": 30,
+      "hue_time_s": 6.0
     }
   ],
   "score": {
@@ -263,9 +270,24 @@
     "reverb_send": {
       "drone": 0.25,
       "pings": 0.8,
-      "tangents": 0.5
+      "tangents": 0.5,
+      "paint": 0.7
     },
     "reverb_level": 0.9,
-    "master_peak_db": -1.0
+    "master_peak_db": -1.0,
+    "paint": {
+      "level": 0.12
+    }
+  },
+  "paint": {
+    "_palette": "one vivid hue per tangent, kept clear of the lattice's blue: gold, magenta, lime, violet, coral, turquoise, tangerine, hot pink",
+    "brush_radius": 2.2,
+    "brush_speed": 6.0,
+    "brush_reach": 3.0,
+    "fade_in_s": 0.6,
+    "pulse_s": 0.5,
+    "tint_amount": 1.0,
+    "hue_jitter_deg": 22,
+    "vivid": 1.15
   }
 }

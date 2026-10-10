@@ -120,12 +120,13 @@ existing sequence for Resolve.
 
 * `mix_stereo.wav` — the stereo mix (24-bit / 48 kHz).
 * `mix_ambix.wav` — first-order ambisonics (AmbiX: ACN/SN3D, W Y Z X), for decoding to a dome's speaker array. Directions are relative to the audience's front, so it follows the camera's turn.
-* `stem_drone.wav`, `stem_pings.wav`, `stem_tangents.wav`, `stem_reverb.wav` — they sum to the stereo mix; use them to rebalance in Resolve.
+* `stem_drone.wav`, `stem_pings.wav`, `stem_paint.wav`, `stem_tangents.wav`, `stem_reverb.wav` — they sum to the stereo mix; use them to rebalance in Resolve.
 
 What you hear:
 
 * **Drone** (D/A) — the lattice. Its upper partials open as it grows; a faint high D is the seed star.
 * **Pings** — every node that switches on rings a soft bell in D pentatonic, pitched by its height on the dome and panned to where it is. Early on you hear single notes; by 45s it's a shimmer.
+* **Paint** — every strut a tangent paints chimes in that tangent's chord as the colour reaches it, so the harmony shifts as the colour spreads.
 * **Tangents** — each one's motif starts `precue_s` *before* the ribbon appears, from where it will emerge — the ears get distracted first — then follows the ribbon round the dome, with a whoosh that rides its speed. Landing: a chord blooms where it touches down, with a low thump. A warm pad in that chord then holds for as long as its colour stays in the lattice.
 
 An AI music bed (ElevenLabs Music / video-to-music) can sit under this later;
@@ -183,8 +184,10 @@ holds its first/last value outside the range.
 * `from_dir` — roughly where on the dome it breaks away (the nearest grown node is used).
 * `out_dir`, `out_dist`, `loop_radius` — where it swings out to, how far, and the size of the loop it makes there.
 * `land_dir` — roughly where it lands.
-* `color`, `width`, `trail`, `intensity` — the ribbon.
+* `color` — its own hue; every tangent gets a different one (see `paint._palette`).
+* `width`, `trail`, `intensity` — the ribbon. `head_glow`, `head_size` — the comet's glowing head. `flash_size` — the landing flash.
 * `spread_speed`, `spread_limit`, `pulse` — how fast its colour travels through the lattice from the landing node, how far it can reach (path units), and how bright the travelling wavefront is.
+* `hue_spread_deg`, `hue_time_s` — how far the stain's hue drifts from the ribbon's own colour (e.g. gold → orange → amber), reached this many seconds after landing.
 * `precue_s` — how early its sound starts before it appears.
 * `sound` — `motif` (notes it plays in flight), `chord` (landing bloom + pad), and levels.
 
@@ -194,11 +197,16 @@ holds its first/last value outside the range.
 * `glow`, `glow_width` — soft halo around struts. `tip_glow` — brightness of growing tips.
 * `fog_distance` — how quickly distance fades struts into `col_deep`.
 * `exposure` — overall brightness before tone-mapping (ACES). Keep the dome dark: a concave screen reflects onto itself.
-* `tint_amount`, `spread_soft`, `pulse_width` — how fully carried-back colour replaces the cool base, the softness of the stain's edge, and the width of the travelling wavefront.
+
+**`paint`** — how tangents colour the lattice. A strut gets painted two ways: the ribbon *brushes* it in flight, or the *stain* spreads to it from the landing node.
+* `_palette` — the hues to draw tangent colours from (kept clear of the lattice's blue).
+* `brush_radius` — how close the comet's head must pass to paint a node; `brush_reach`, `brush_speed` — how far, and how fast, brushed colour bleeds from there.
+* `fade_in_s`, `pulse_s` — how quickly colour arrives at a strut, and how long its arrival flashes.
+* `tint_amount` — how fully colour replaces the cool base. `hue_jitter_deg` — node-to-node hue variety. `vivid` — brightness of painted struts.
 
 **`score`**
 * `drone` — `notes`, `level`, `star_note`, `star_level`.
-* `pings` — `level`.
+* `pings` — `level` (growth). `paint` — `level` (chimes as colour reaches each strut).
 * `reverb_send` (per layer), `reverb_level`, `master_peak_db`.
 
 **`render`**
@@ -209,7 +217,7 @@ holds its first/last value outside the range.
 | # | Section | Time | Status |
 |---|---|---|---|
 | 1 | **Seed** — star at the zenith grows into a cool, ordered lattice | 0:00–0:45 | ✅ v2 |
-| 2 | **First tug** — sound cue first, then a bright ribbon breaks away toward the horizon and returns warm, colour seeping into the lattice; the audience starts to rise | 0:45–1:30 | ✅ v1 |
+| 2 | **First tug** — sound cue first, then a bright comet breaks away toward the horizon, painting struts as it passes, and lands in a burst of colour that spreads through the lattice; the audience starts to rise | 0:45–1:30 | ✅ v2 |
 | 3 | **Escalation + hyperfocus** — competing threads; then everything snaps to one tangent that blooms to fill the dome (flow, as joy) | 1:30–3:00 | — |
 | 4 | **Overload → darkness** — too many threads, then a hard cut to black and silence | 3:00–3:45 | — |
 | 5 | **Rebuild** — the lattice regrows from every colour the tangents brought back | 3:45–5:00 | — |
@@ -229,5 +237,6 @@ tangent, panned to where it appears on the dome (separate stems).
 ## Version history
 
 * **Seed v1** — stateless hash-driven lattice. Issues: ~14s of dead air before growth, orphan fragments floating unconnected, flat white look.
+* **First tug v2** — brighter comets (white-hot core, saturated halo, glowing head), a different vivid colour per tangent (gold, magenta), ribbons paint struts they brush past in flight, bigger multi-hued stains that drift within each colour's family, paint chimes in each tangent's chord.
 * **First tug v1** — shared timeline; camera still through section 1, then a slow rise and gentle turn; two tangents (amber, rose) with landing flashes and colour spreading through the lattice; procedural score (drone, node pings, tangent motifs with pre-cue, whoosh, bloom, pad) in stereo + AmbiX.
 * **Seed v2** — precomputed growth graph (no orphans, growth travels along branches, ~10× faster), first branch by ~8s, true-black sky, cooler struts, brighter tips, 2× supersampling.

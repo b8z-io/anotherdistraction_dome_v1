@@ -104,7 +104,10 @@ class Timeline:
         self.P = P
         self.G = lattice.build(P)
         self.tangents = [self._resolve_tangent(i, T) for i, T in enumerate(P.get("tangents", []))]
-        self.spread_tex = lattice.spread_fields(self.G, [T["land_node"] for T in self.tangents])
+        if len(self.tangents) > 8:
+            raise ValueError("at most 8 tangents (shader limit)")
+        fields = [self._paint(T) for T in self.tangents]
+        self.paint_tex = lattice.pack_paint(fields, self.G["N"])
 
     # growth front, in path-distance units
     def front(self, t):
@@ -168,6 +171,32 @@ class Timeline:
             "land_s": tl,
         }
 
+    def _paint(self, T):
+        """Arrival time + coverage of T's colour at every lattice node (see lattice.paint_field)."""
+        G, B = self.G, self.P["paint"]
+        brushed = {}
+        for t in np.arange(T["launch_s"], T["land_s"], 0.04):
+            rb = self.ribbon(T, t)
+            if rb is None:
+                continue
+            head = rb[0][-1]
+            near = np.linalg.norm(G["node_world"] - head, axis=1) < B["brush_radius"]
+            near &= G["node_dist"] < self.front(t)            # only struts that exist by then
+            for i in np.flatnonzero(near):
+                brushed.setdefault(i, t)
+        arr, cov = lattice.paint_field(
+            G, T["land_node"], T["land_s"], T["spread_speed"], T["spread_limit"],
+            [(tuple(G["node_idx"][i]), tp) for i, tp in brushed.items()],
+            B["brush_speed"], B["brush_reach"])
+        ix = tuple(G["node_idx"].T)
+        T["paint_arrival"], T["paint_cover"] = arr[ix], cov[ix]     # per node, for the score
+        T["n_brushed"] = len(brushed)
+        return arr, cov
+
+    def head(self, T, t):
+        rb = self.ribbon(T, t)
+        return None if rb is None else rb[0][-1]
+
     def ribbon(self, T, t, k=24):
         """Ribbon polyline (k points, tail -> head) and per-point intensity, or None."""
         trail = T["trail"]
@@ -200,6 +229,12 @@ class Timeline:
     def flash(self, T, t):
         dt = t - T["land_s"]
         return 0.0 if dt < 0 else T["intensity"] * 2.0 * math.exp(-dt / 1.2)
+
+    def pulse(self, T, t):
+        """Brightness of the colour wavefront: steady while painting in flight, fading after landing."""
+        if t < T["launch_s"]:
+            return 0.0
+        return T["pulse"] * (1.0 if t < T["land_s"] else math.exp(-(t - T["land_s"]) / 7.0))
 
     def spread_front(self, T, t):
         """Path distance the colour has travelled from the landing node."""

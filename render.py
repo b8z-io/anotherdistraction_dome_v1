@@ -55,10 +55,11 @@ class Renderer:
             t.use(unit)
             return t
         self.textures = [tex3d(G["tex"], 0)]
-        sp = self.TL.spread_tex + [self.TL.spread_tex[0]] * (2 - len(self.TL.spread_tex))
-        self.textures += [tex3d(sp[0], 1), tex3d(sp[1], 2)]
+        self.textures += [tex3d(pt, 1 + k) for k, pt in enumerate(self.TL.paint_tex)]
 
         o, L, S, look, R, C = P["output"], P["lattice"], P["seed_point"], P["look"], P["render"], P["camera"]
+        PT = P["paint"]
+        pad8 = lambda xs, fill=0.0: list(xs) + [fill] * (8 - len(xs))
         Tn = self.TL.tangents
         cols = [tuple(T["color"]) for T in Tn] + [(0.0, 0.0, 0.0)] * (8 - len(Tn))
         static = {
@@ -69,12 +70,15 @@ class Renderer:
             "uVoidIn": C["void_inner"], "uVoidOut": C["void_outer"],
             "uLatRot": mat(G["rot"]),
             "uCell": L["cell"], "uStrutR": L["strut_radius"], "uNodeR": L["node_radius"],
-            "uGraph": 0, "uSpread0": 1, "uSpread1": 2,
+            "uGraph": 0, "uPaint0": 1, "uPaint1": 2, "uPaint2": 3, "uPaint3": 4,
             "uGridH": G["H"], "uExtent": L["extent"], "uXDelay": L["crosslink_delay"],
             "uSeedPos": tuple(G["stats"]["root_world"]), "uStarSize": S["star_size_rad"],
             "uNumT": len(Tn), "uSpCol": cols,
-            "uSpLimit": [T["spread_limit"] for T in Tn] + [1.0] * (8 - len(Tn)),
-            "uSpSoft": look["spread_soft"], "uPulseW": look["pulse_width"], "uTintAmt": look["tint_amount"],
+            "uLandT": pad8([T["land_s"] for T in Tn]),
+            "uHueSpread": pad8([math.radians(T["hue_spread_deg"]) for T in Tn]),
+            "uHueTime": pad8([T["hue_time_s"] for T in Tn], 1.0),
+            "uSoftT": PT["fade_in_s"], "uPulseT": PT["pulse_s"], "uTintAmt": PT["tint_amount"],
+            "uHueJitter": math.radians(PT["hue_jitter_deg"]), "uVivid": PT["vivid"],
             "uColDeep": tuple(look["col_deep"]), "uColStrut": tuple(look["col_strut"]),
             "uColTip": tuple(look["col_tip"]), "uGlow": look["glow"], "uGlowW": look["glow_width"],
             "uTipGlow": look["tip_glow"], "uFogDist": look["fog_distance"], "uExposure": look["exposure"],
@@ -89,18 +93,12 @@ class Renderer:
         cam, R = TL.camera(t)
         u = {"uFront": TL.front(t), "uStar": TL.star(t),
              "uCamPos": tuple(cam), "uCamRot": mat(R)}
-        fronts, pulses = [], []
-        for T in TL.tangents:
-            F = TL.spread_front(T, t)
-            fronts.append(F)
-            # wavefront glows while the colour is still travelling
-            pulses.append(0.0 if F < 0 else T["pulse"] * (1 - F / T["spread_limit"]) ** 1.5)
-        u["uSpFront"] = fronts + [-1.0] * (8 - len(fronts))
-        u["uSpPulse"] = pulses + [0.0] * (8 - len(pulses))
+        u["uTime"] = t
+        u["uSpPulse"] = [TL.pulse(T, t) for T in TL.tangents] + [0.0] * (8 - len(TL.tangents))
         rib = np.zeros((4 * 24, 4), np.float32)
         ribcol = [(0.0, 0.0, 0.0, 0.0)] * 4
-        flash = [(0.0, 0.0, 0.0, 0.0)] * 4
-        flashcol = [(0.0, 0.0, 0.0)] * 4
+        flash = [(0.0, 0.0, 0.0, 0.0)] * 8
+        flashcol = [(0.0, 0.0, 0.0, 1.0)] * 8
         slot = fslot = 0
         for T in TL.tangents:
             r = TL.ribbon(T, t)
@@ -109,10 +107,14 @@ class Renderer:
                 rib[slot * 24:(slot + 1) * 24, 3] = r[1]
                 ribcol[slot] = (*T["color"], T["width"])
                 slot += 1
+                if t < T["land_s"] and fslot < 8:      # the comet's glowing head
+                    flash[fslot] = (*r[0][-1], T["head_glow"])
+                    flashcol[fslot] = (*T["color"], T["head_size"])
+                    fslot += 1
             f = TL.flash(T, t)
-            if f > 0.01 and fslot < 4:
+            if f > 0.01 and fslot < 8:
                 flash[fslot] = (*T["land"], f)
-                flashcol[fslot] = tuple(T["color"])
+                flashcol[fslot] = (*T["color"], T["flash_size"])
                 fslot += 1
         u.update({"uNumRib": slot, "uRib": [tuple(x) for x in rib], "uRibCol": ribcol,
                   "uFlash": flash, "uFlashCol": flashcol})

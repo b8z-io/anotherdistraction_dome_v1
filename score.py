@@ -12,12 +12,14 @@ lands on the frame it belongs to and comes from where it happens on the dome.
                emerge (ears get distracted first), then follows the ribbon round the
                dome with a whoosh tied to its speed; a chord blooms where it lands
                and a warm pad holds while its colour stays in the lattice
+  * paint    — every strut a tangent paints chimes in that tangent's chord as the
+               colour reaches it: the harmony changes as the colour spreads
   * reverb   — one shared space
 
 Outputs (in --out, default score/):
   mix_stereo.wav           stereo mix (24-bit, 48 kHz)
   mix_ambix.wav            first-order ambisonics, AmbiX (ACN/SN3D: W Y Z X) for dome speaker arrays
-  stem_<name>.wav          stereo stems (drone, pings, tangents, reverb) — they sum to the mix
+  stem_<name>.wav          stereo stems (drone, pings, paint, tangents, reverb) — they sum to the mix
 
   python score.py --end 90
 """
@@ -180,7 +182,7 @@ def main():
     G = TL.G
     end = a.end or max([T["land_s"] + 10 for T in TL.tangents] + [P["growth"]["front_keys"][-1][0] + 5])
     n = int(end * SR)
-    M = Mixer(n, ["drone", "pings", "tangents", "reverb"])
+    M = Mixer(n, ["drone", "pings", "paint", "tangents", "reverb"])
     t_ctl = np.arange(0, end + 0.01, 0.01)                  # 100 Hz control rate
     t_smp = np.arange(n) / SR
 
@@ -301,12 +303,30 @@ def main():
         thump = np.sin(2 * np.pi * (40 + 25 * np.exp(-tb[:SR] / 0.08)) * tb[:SR]) * np.exp(-tb[:SR] / 0.35)
         M.add(thump * TS["thump_level"], int(tland * SR), [0, 0, -1], "tangents", width=1.0)
 
+        # paint chimes: each node rings in this tangent's chord as its colour arrives
+        Pt = S["paint"]
+        chime = [hz(x) * 2 for x in TS["chord"]] + [hz(x) * 4 for x in TS["chord"][1:3]]
+        cg = {(k, j): bell(f, tau, int(tau * 5 * SR)) for k, f in enumerate(chime) for j, tau in enumerate((0.5, 0.9))}
+        arr, cov = T["paint_arrival"], T["paint_cover"]
+        sel = np.flatnonzero((arr >= 0) & (arr < end) & (cov > 0.35))
+        hist_p, _ = np.histogram(arr[sel], bins=np.arange(0, end + 1, 0.5))
+        rng_p = np.random.default_rng([P["seed"], 61, T["index"]])
+        for i in sel:
+            t = arr[i]
+            rel = to_cam(G["node_world"][i], t)[0]
+            r = np.linalg.norm(rel)
+            rate = hist_p[min(int(t * 2), len(hist_p) - 1)] * 2
+            amp = Pt["level"] * cov[i] / (1 + r / 7) / math.sqrt(max(rate, 6) / 6)
+            g = cg[(int(rng_p.integers(0, len(chime))), int(rng_p.integers(0, 2)))]
+            M.add(g * amp, int(t * SR), rel, "paint")
+
         # colour pad: swells as the colour spreads, then stays as long as the colour does
         i2 = int(tland * SR)
         tp = np.arange(i2, n) / SR
         if len(tp):
-            fc = np.array([TL.spread_front(T, t) for t in t_ctl]) / T["spread_limit"]
-            frac = np.interp(tp, t_ctl, np.clip(fc, 0, 1))
+            painted = np.sort(arr[(arr >= 0) & (cov > 0.35)])
+            fc = np.searchsorted(painted, t_ctl) / max(len(painted), 1)
+            frac = np.interp(tp, t_ctl, fc)
             pad = sum(additive(hz(x) / 2, len(tp), seed=[P["seed"], 53, T["index"], k], tilt=1.8)
                       for k, x in enumerate(TS["chord"]))
             pad *= TS["pad_level"] * (0.35 + 0.65 * frac) * smoothstep((tp - tland) / 3)
@@ -317,11 +337,11 @@ def main():
             M.add(pad, i2, lr_s, "tangents", width=0.3)
 
     # ---------------------------------------------------------------- reverb + master
-    dry = sum(M.st[s] * S["reverb_send"][s] for s in ("drone", "pings", "tangents"))
+    dry = sum(M.st[s] * S["reverb_send"][s] for s in ("drone", "pings", "paint", "tangents"))
     ir_r = reverb_ir(5.0, P["seed"] + 1)
     M.st["reverb"] = np.stack([convolve(dry[0], ir), convolve(dry[1], ir_r)]) * S["reverb_level"]
     # ambisonic reverb: decorrelated tails, diffuse
-    w_dry = sum(M.st[s].sum(0) * S["reverb_send"][s] for s in ("drone", "pings", "tangents")) * 0.5
+    w_dry = sum(M.st[s].sum(0) * S["reverb_send"][s] for s in ("drone", "pings", "paint", "tangents")) * 0.5
     amb_rev = np.stack([convolve(w_dry, reverb_ir(5.0, P["seed"] + 10 + k)) for k in range(4)])
     amb_rev[1:] *= 0.4
     amb = M.amb + amb_rev * S["reverb_level"]

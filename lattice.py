@@ -10,9 +10,9 @@ Packed into a 3D float texture the shader reads with texelFetch:
   g = edge mask, 6 bits (+x -x +y -y +z -z), tree edges and cross-links
   b = cross-link mask, 6 bits (subset of g)
 
-`spread_fields` adds, per tangent, the path distance through the lattice
-from where that tangent lands — the colour it brings back spreads
-through the lattice like dye through veins.
+`paint_field` adds, per tangent, when its colour reaches each node — brushed
+by the ribbon in flight, or spreading out from where it lands like dye
+through veins.
 """
 import heapq
 import math
@@ -31,12 +31,15 @@ def euler_to_mat(deg):
 
 
 def _dijkstra(N, sources, step_ok, weight):
+    """sources: [(node, starting value), ...]"""
     dist = np.full((N, N, N), np.inf)
     parent = np.full((N, N, N), -1, np.int8)
     pq = []
-    for s in sources:
-        dist[s] = 0.0
-        pq.append((0.0, s))
+    for s, v0 in sources:
+        s = tuple(int(x) for x in s)
+        if v0 < dist[s]:
+            dist[s] = v0
+            pq.append((v0, s))
     heapq.heapify(pq)
     while pq:
         d0, (i, j, k) = heapq.heappop(pq)
@@ -84,7 +87,7 @@ def build(P):
         di, dj, dk = DIRS[d]
         return c * w_axis[a, i + di, j + dj, k + dk]
 
-    dist, parent = _dijkstra(N, [root], lambda i, j, k, d, u, v, w: alive[u, v, w], wt)
+    dist, parent = _dijkstra(N, [(root, 0.0)], lambda i, j, k, d, u, v, w: alive[u, v, w], wt)
 
     reached = np.isfinite(dist)
     edge = np.zeros((N, N, N), np.int32)
@@ -125,18 +128,48 @@ def build(P):
     return G
 
 
-def spread_fields(G, land_nodes):
-    """Path distance through the lattice from each landing node (between any two
-    neighbouring grown nodes, so the colour stains a region rather than one
-    branch). Returns RGBA float textures (4 tangents each), -1 = never reached."""
-    N, reached = G["N"], G["reached"]
+def paint_field(G, land_node, land_t, speed, limit, brushed, brush_speed, brush_reach):
+    """When a tangent's colour reaches each lattice node, and how fully it covers it.
+
+    Two ways a node gets painted:
+      * brushed — the ribbon passed close by in flight (`brushed` = [(node, time), ...]);
+        colour bleeds a little way (`brush_reach` path units) from there
+      * stained — spreading out from the landing node at `land_t`, starting at
+        `speed` path units/s and easing to a stop at `limit` path units
+    Colour travels between any two neighbouring grown nodes, so it stains a region.
+    Returns (arrival seconds, -1 = never; coverage 0..1), each (N, N, N).
+    """
+    N, reached, wt = G["N"], G["reached"], G["wt"]
     step_ok = lambda i, j, k, d, u, v, w: reached[u, v, w]
-    n_tex = max(1, math.ceil(len(land_nodes) / 4))
-    texs = [np.full((N, N, N, 4), -1.0, np.float32) for _ in range(n_tex)]
-    for n, node in enumerate(land_nodes):
-        d, _ = _dijkstra(N, [tuple(int(v) for v in node)], step_ok, G["wt"])
-        texs[n // 4][..., n % 4] = np.where(np.isfinite(d), d, -1.0)
-    return [np.ascontiguousarray(t.transpose(2, 1, 0, 3)) for t in texs]
+    d, _ = _dijkstra(N, [(land_node, 0.0)], step_ok, wt)
+    frac = d / limit
+    with np.errstate(divide="ignore", invalid="ignore"):
+        arr = np.where(frac < 0.98, land_t - (limit / speed) * np.log1p(-np.minimum(frac, 0.98)), np.inf)
+    cover = 1 - np.clip((frac - 0.55) / 0.43, 0, 1) ** 2
+    if brushed:
+        tb, _ = _dijkstra(N, [(n, tp * brush_speed) for n, tp in brushed], step_ok, wt)
+        db, _ = _dijkstra(N, [(n, 0.0) for n, _ in brushed], step_ok, wt)
+        ok = db < brush_reach
+        arr_b = np.where(ok, tb / brush_speed, np.inf)
+        cov_b = np.where(ok, 1 - np.clip((db / brush_reach - 0.4) / 0.6, 0, 1) ** 2, 0)
+        cover = np.where(arr_b < arr, np.maximum(cov_b, np.where(np.isfinite(arr), cover, 0)), cover)
+        arr = np.minimum(arr, arr_b)
+    reach = np.isfinite(arr) & reached
+    return np.where(reach, arr, -1.0), np.where(reach, cover, 0.0)
+
+
+def pack_paint(fields, N):
+    """[(arrival, cover), ...] for up to 8 tangents -> 4 RGBA textures (2 tangents each)."""
+    texs = []
+    for k in range(4):
+        t = np.zeros((N, N, N, 4), np.float32)
+        t[..., 0] = t[..., 2] = -1.0
+        for j in range(2):
+            i = 2 * k + j
+            if i < len(fields):
+                t[..., 2 * j], t[..., 2 * j + 1] = fields[i]
+        texs.append(np.ascontiguousarray(t.transpose(2, 1, 0, 3)))
+    return texs
 
 
 if __name__ == "__main__":
