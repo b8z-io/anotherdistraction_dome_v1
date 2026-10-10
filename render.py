@@ -159,6 +159,7 @@ def main():
     ap.add_argument("--cols", type=int, default=4)
     ap.add_argument("--movie", nargs="?", const="h264", choices=["h264", "hevc", "prores"],
                     help="after a --range render, stitch the frames into a movie (default h264)")
+    ap.add_argument("--audio", help="with --movie: soundtrack to lay in (e.g. score/mix_stereo.wav)")
     a = ap.parse_args()
 
     P = json.loads(Path(a.params).read_text())
@@ -188,7 +189,7 @@ def main():
         contact_sheet(imgs, [f"{t:.1f}s" for t in times], a.sheet, a.cols)
     elif a.movie:
         from movie import make_movie
-        make_movie(a.out, codec=a.movie, fps=P["output"]["fps"])
+        make_movie(a.out, codec=a.movie, fps=P["output"]["fps"], audio=a.audio)
 
 
 if __name__ == "__main__":

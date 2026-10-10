@@ -7,6 +7,7 @@ falling back to a system ffmpeg if one is on PATH. Frame rate comes from params.
   python movie.py frames/seed_512                      # -> frames/seed_512.mp4 (H.264)
   python movie.py frames/4k --codec prores             # -> frames/4k.mov  (ProRes 422 HQ, for Resolve)
   python movie.py frames/4k --codec hevc -o seed.mp4   # HEVC, smaller files for review at 4K+
+  python movie.py frames/prev --audio score/mix_stereo.wav   # with the soundtrack from score.py
 """
 import argparse, json, re, shutil, subprocess, sys
 from pathlib import Path
@@ -31,7 +32,7 @@ def ffmpeg_exe():
         sys.exit("ffmpeg not found — run:  pip install -r requirements.txt")
 
 
-def make_movie(frames_dir, out=None, codec="h264", fps=None, params=None):
+def make_movie(frames_dir, out=None, codec="h264", fps=None, params=None, audio=None):
     frames_dir = Path(frames_dir)
     nums = sorted(int(m.group(1)) for f in frames_dir.glob("frame_*.png")
                   if (m := re.fullmatch(r"frame_(\d+)\.png", f.name)))
@@ -46,7 +47,12 @@ def make_movie(frames_dir, out=None, codec="h264", fps=None, params=None):
     out = Path(out) if out else frames_dir.with_suffix(ext)
     cmd = [ffmpeg_exe(), "-y", "-loglevel", "error", "-stats",
            "-framerate", str(fps), "-start_number", str(nums[0]),
-           "-i", str(frames_dir / "frame_%05d.png"), *args, str(out)]
+           "-i", str(frames_dir / "frame_%05d.png")]
+    if audio:
+        # audio sample 0 = t 0s; offset it to the first frame so a partial render stays in sync
+        cmd += ["-ss", f"{nums[0] / fps:.6f}", "-i", str(audio), "-map", "0:v", "-map", "1:a", "-shortest"]
+        cmd += ["-c:a", "pcm_s24le"] if codec == "prores" else ["-c:a", "aac", "-b:a", "320k"]
+    cmd += [*args, str(out)]
     subprocess.run(cmd, check=True)
     print(f"{out}  ({len(nums)} frames, {len(nums) / fps:.2f}s at {fps}fps, {codec})")
     return out
@@ -59,5 +65,6 @@ if __name__ == "__main__":
     ap.add_argument("--codec", choices=CODECS, default="h264")
     ap.add_argument("--fps", type=float, help="override fps from params.json")
     ap.add_argument("--params", help="params.json to read fps from")
+    ap.add_argument("--audio", help="soundtrack to lay in, e.g. score/mix_stereo.wav (from score.py)")
     a = ap.parse_args()
-    make_movie(a.frames, a.out, a.codec, a.fps, a.params)
+    make_movie(a.frames, a.out, a.codec, a.fps, a.params, a.audio)
