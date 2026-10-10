@@ -1,5 +1,5 @@
 {
-  "_note": "Every knob for the piece lives here. Change one or two, commit, re-render.",
+  "_note": "Every knob for the piece lives here. Change one or two, commit, re-render. Times in seconds; directions are [azimuth, elevation] in degrees relative to the audience (az 0 front, 90 right, 180 behind; el 0 horizon, 90 zenith).",
   "seed": 1,
   "output": {
     "projection": "domemaster",
@@ -42,10 +42,32 @@
     "star_size_rad": 0.004
   },
   "growth": {
-    "start_s": 6.0,
-    "end_s": 45.0,
-    "end_path": 40.0,
-    "curve_power": 1.35
+    "front_keys": [
+      [
+        6,
+        0
+      ],
+      [
+        20,
+        10
+      ],
+      [
+        30,
+        20.8
+      ],
+      [
+        45,
+        40
+      ],
+      [
+        70,
+        52
+      ],
+      [
+        90,
+        61
+      ]
+    ]
   },
   "look": {
     "col_deep": [
@@ -67,10 +89,123 @@
     "glow_width": 0.06,
     "tip_glow": 2.5,
     "fog_distance": 18.0,
-    "exposure": 0.9
+    "exposure": 0.9,
+    "spread_soft": 3.0,
+    "pulse_width": 2.0,
+    "tint_amount": 1.0
   },
   "render": {
     "steps": 200,
     "far": 45.0
-  }
+  },
+  "camera": {
+    "x_keys": [
+      [
+        0,
+        0
+      ]
+    ],
+    "z_keys": [
+      [
+        0,
+        0
+      ]
+    ],
+    "y_keys": [
+      [
+        0,
+        0
+      ],
+      [
+        45,
+        0
+      ],
+      [
+        90,
+        3.5
+      ]
+    ],
+    "yaw_keys": [
+      [
+        0,
+        0
+      ],
+      [
+        45,
+        0
+      ],
+      [
+        90,
+        15
+      ]
+    ],
+    "void_inner": 1.2,
+    "void_outer": 4.0
+  },
+  "tangents": [
+    {
+      "name": "first tug",
+      "launch_s": 51.0,
+      "flight_s": 11.0,
+      "absorb_s": 2.5,
+      "from_dir": [
+        -35,
+        55
+      ],
+      "out_dir": [
+        -140,
+        12
+      ],
+      "out_dist": 22,
+      "loop_radius": 4.0,
+      "land_dir": [
+        60,
+        60
+      ],
+      "color": [
+        1.0,
+        0.52,
+        0.12
+      ],
+      "width": 0.09,
+      "trail": 9.0,
+      "intensity": 3.0,
+      "spread_speed": 5.0,
+      "spread_limit": 30.0,
+      "pulse": 2.5,
+      "precue_s": 1.2
+    },
+    {
+      "name": "second glance",
+      "launch_s": 76.0,
+      "flight_s": 7.0,
+      "absorb_s": 2.0,
+      "from_dir": [
+        110,
+        40
+      ],
+      "out_dir": [
+        170,
+        25
+      ],
+      "out_dist": 16,
+      "loop_radius": 2.5,
+      "land_dir": [
+        -60,
+        45
+      ],
+      "color": [
+        1.0,
+        0.28,
+        0.42
+      ],
+      "width": 0.09,
+      "trail": 6.0,
+      "intensity": 3.0,
+      "spread_speed": 4.0,
+      "spread_limit": 18.0,
+      "pulse": 2.5,
+      "precue_s": 1.0
+    }
+  ]
 }

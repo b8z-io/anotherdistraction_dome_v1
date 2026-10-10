@@ -9,7 +9,10 @@ Packed into a 3D float texture the shader reads with texelFetch:
   r = reveal path distance (-1 = empty site)
   g = edge mask, 6 bits (+x -x +y -y +z -z), tree edges and cross-links
   b = cross-link mask, 6 bits (subset of g)
-  a = edge weight to parent (unused by shader yet; handy later)
+
+`spread_fields` adds, per tangent, the path distance through the lattice
+from where that tangent lands — the colour it brings back spreads
+through the lattice like dye through veins.
 """
 import heapq
 import math
@@ -27,6 +30,30 @@ def euler_to_mat(deg):
     return rz @ ry @ rx
 
 
+def _dijkstra(N, sources, step_ok, weight):
+    dist = np.full((N, N, N), np.inf)
+    parent = np.full((N, N, N), -1, np.int8)
+    pq = []
+    for s in sources:
+        dist[s] = 0.0
+        pq.append((0.0, s))
+    heapq.heapify(pq)
+    while pq:
+        d0, (i, j, k) = heapq.heappop(pq)
+        if d0 > dist[i, j, k]:
+            continue
+        for di, (a, b, e) in enumerate(DIRS):
+            u, v, w = i + a, j + b, k + e
+            if not (0 <= u < N and 0 <= v < N and 0 <= w < N) or not step_ok(i, j, k, di, u, v, w):
+                continue
+            nd = d0 + weight(i, j, k, di)
+            if nd < dist[u, v, w]:
+                dist[u, v, w] = nd
+                parent[u, v, w] = di ^ 1
+                heapq.heappush(pq, (nd, (u, v, w)))
+    return dist, parent
+
+
 def build(P):
     L, S = P["lattice"], P["seed_point"]
     c = L["cell"]
@@ -42,12 +69,10 @@ def build(P):
     r = np.sqrt(X**2 + Y**2 + Z**2) * c
     alive = (rng.random((N, N, N)) < L["site_density"]) & (r >= L["audience_void_radius"]) & (r <= L["extent"])
 
-    # root = alive site nearest the seed point
     dseed = np.sqrt((X * c - seedL[0])**2 + (Y * c - seedL[1])**2 + (Z * c - seedL[2])**2)
     dseed[~alive] = np.inf
-    root = np.unravel_index(np.argmin(dseed), dseed.shape)
+    root = tuple(int(v) for v in np.unravel_index(np.argmin(dseed), dseed.shape))
 
-    # one random weight per undirected edge (cell -> +axis neighbour)
     lo, hi = L["edge_weight_range"]
     w_axis = lo + (hi - lo) * rng.random((3, N, N, N))
     xl = rng.random((3, N, N, N)) < L["crosslink_density"]
@@ -55,33 +80,16 @@ def build(P):
     def wt(i, j, k, d):
         a = d // 2
         if d % 2 == 0:
-            return w_axis[a, i, j, k]
+            return c * w_axis[a, i, j, k]
         di, dj, dk = DIRS[d]
-        return w_axis[a, i + di, j + dj, k + dk]
+        return c * w_axis[a, i + di, j + dj, k + dk]
 
-    dist = np.full((N, N, N), np.inf)
-    parent = np.full((N, N, N), -1, np.int8)   # direction index toward parent
-    dist[root] = 0.0
-    pq = [(0.0, root)]
-    while pq:
-        d0, (i, j, k) = heapq.heappop(pq)
-        if d0 > dist[i, j, k]:
-            continue
-        for di, (a, b, e) in enumerate(DIRS):
-            u, v, w = i + a, j + b, k + e
-            if not (0 <= u < N and 0 <= v < N and 0 <= w < N) or not alive[u, v, w]:
-                continue
-            nd = d0 + c * wt(i, j, k, di)
-            if nd < dist[u, v, w]:
-                dist[u, v, w] = nd
-                parent[u, v, w] = di ^ 1
-                heapq.heappush(pq, (nd, (u, v, w)))
+    dist, parent = _dijkstra(N, [root], lambda i, j, k, d, u, v, w: alive[u, v, w], wt)
 
     reached = np.isfinite(dist)
     edge = np.zeros((N, N, N), np.int32)
     cross = np.zeros((N, N, N), np.int32)
     for d, (a, b, e) in enumerate(DIRS):
-        # tree edge: I point at my parent, or my neighbour points back at me
         edge |= ((parent == d) & reached).astype(np.int32) << d
         nb = np.roll(parent, shift=(-a, -b, -e), axis=(0, 1, 2))
         nb_ok = np.roll(reached, shift=(-a, -b, -e), axis=(0, 1, 2))
@@ -90,32 +98,48 @@ def build(P):
         if b: valid[:, (N - 1) if b > 0 else 0, :] = False
         if e: valid[:, :, (N - 1) if e > 0 else 0] = False
         edge |= ((nb == (d ^ 1)) & nb_ok & reached & valid).astype(np.int32) << d
-        # cross-links between two reached neighbours (decided once per undirected edge)
-        if d % 2 == 0:
-            xm = xl[d // 2]
-        else:
-            xm = np.roll(xl[d // 2], shift=(-a, -b, -e), axis=(0, 1, 2))
-        xm = xm & reached & nb_ok & valid
-        cross |= xm.astype(np.int32) << d
+        xm = xl[d // 2] if d % 2 == 0 else np.roll(xl[d // 2], shift=(-a, -b, -e), axis=(0, 1, 2))
+        cross |= (xm & reached & nb_ok & valid).astype(np.int32) << d
     edge |= cross
 
     tex = np.zeros((N, N, N, 4), np.float32)
     tex[..., 0] = np.where(reached, dist, -1.0)
     tex[..., 1] = edge
     tex[..., 2] = cross
-    stats = {
+
+    idx = np.argwhere(reached)
+    G = {
+        "N": N, "H": H, "cell": c, "rot": rot, "root": root,
+        "dist": dist, "edge": edge, "cross": cross, "wt": wt, "reached": reached,
+        "node_idx": idx,
+        "node_dist": dist[reached],
+        "node_world": ((idx - H) * c) @ rot,       # lattice -> world (rot is orthonormal)
+        "tex": np.ascontiguousarray(tex.transpose(2, 1, 0, 3)),   # texture3d wants x fastest
+    }
+    G["stats"] = {
         "grid": N, "sites": int(alive.sum()), "reached": int(reached.sum()),
-        "root_world": (rot.T @ (np.array(root) - H) * c).tolist(),
+        "root_world": (rot.T @ ((np.array(root) - H) * c)).tolist(),
         "path_p50": float(np.percentile(dist[reached], 50)),
-        "path_p90": float(np.percentile(dist[reached], 90)),
         "path_max": float(dist[reached].max()),
     }
-    # texture3d wants x fastest: (z, y, x, 4)
-    return np.ascontiguousarray(tex.transpose(2, 1, 0, 3)), H, rot, stats
+    return G
+
+
+def spread_fields(G, land_nodes):
+    """Path distance through the lattice from each landing node (between any two
+    neighbouring grown nodes, so the colour stains a region rather than one
+    branch). Returns RGBA float textures (4 tangents each), -1 = never reached."""
+    N, reached = G["N"], G["reached"]
+    step_ok = lambda i, j, k, d, u, v, w: reached[u, v, w]
+    n_tex = max(1, math.ceil(len(land_nodes) / 4))
+    texs = [np.full((N, N, N, 4), -1.0, np.float32) for _ in range(n_tex)]
+    for n, node in enumerate(land_nodes):
+        d, _ = _dijkstra(N, [tuple(int(v) for v in node)], step_ok, G["wt"])
+        texs[n // 4][..., n % 4] = np.where(np.isfinite(d), d, -1.0)
+    return [np.ascontiguousarray(t.transpose(2, 1, 0, 3)) for t in texs]
 
 
 if __name__ == "__main__":
     import json, sys
     P = json.load(open(sys.argv[1] if len(sys.argv) > 1 else "params.json"))
-    _, _, _, s = build(P)
-    print(json.dumps(s, indent=2))
+    print(json.dumps(build(P)["stats"], indent=2))

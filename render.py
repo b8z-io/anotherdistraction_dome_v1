@@ -18,30 +18,21 @@ import numpy as np
 import moderngl
 from PIL import Image, ImageDraw, ImageFont
 
-import lattice
+import timeline as tl
 
 ROOT = Path(__file__).resolve().parent
 
 
-def smooth(x):
-    x = min(max(x, 0.0), 1.0)
-    return x * x * (3 - 2 * x)
-
-
-def envelope(P, t):
-    """Time-dependent values. Kept here so the shader stays a pure function."""
-    g = P["growth"]
-    u = (t - g["start_s"]) / (g["end_s"] - g["start_s"])
-    front = -1.0 if u <= 0 else g["end_path"] * min(u, 1.0) ** g["curve_power"]
-    s = P["seed_point"]
-    a, b = s["star_fade_in_s"]
-    star = s["star_intensity"] * smooth((t - a) / max(b - a, 1e-6))
-    return {"uFront": front, "uStar": star}
+def mat(m):
+    """numpy 3x3 -> GLSL mat3 (column-major)."""
+    return tuple(np.asarray(m, float).T.flatten())
 
 
 class Renderer:
-    def __init__(self, P, res, proj, ss):
+    def __init__(self, P, res, proj, ss, params_path):
         self.P = P
+        self.TL = tl.load(str(Path(params_path).resolve()))
+        G = self.TL.G
         self.w = res * 2 if proj == "equirect" else res
         self.h = res
         # Linux servers: headless EGL. Mac (CGL) / Windows (WGL): the default context.
@@ -56,21 +47,34 @@ class Renderer:
         quad = np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4")
         self.vao = self.ctx.vertex_array(self.prog, [(self.ctx.buffer(quad), "2f", "in_pos")])
         self.fbo = self.ctx.simple_framebuffer((self.w, self.h), components=4)
-        o, L, S, look, R = P["output"], P["lattice"], P["seed_point"], P["look"], P["render"]
-        tex, H, rot, self.stats = lattice.build(P)
-        n = 2 * H + 1
-        self.graph = self.ctx.texture3d((n, n, n), 4, tex.tobytes(), dtype="f4")
-        self.graph.filter = (moderngl.NEAREST, moderngl.NEAREST)
-        self.graph.use(0)
+
+        n = G["N"]
+        def tex3d(arr, unit):
+            t = self.ctx.texture3d((n, n, n), 4, arr.tobytes(), dtype="f4")
+            t.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            t.use(unit)
+            return t
+        self.textures = [tex3d(G["tex"], 0)]
+        sp = self.TL.spread_tex + [self.TL.spread_tex[0]] * (2 - len(self.TL.spread_tex))
+        self.textures += [tex3d(sp[0], 1), tex3d(sp[1], 2)]
+
+        o, L, S, look, R, C = P["output"], P["lattice"], P["seed_point"], P["look"], P["render"], P["camera"]
+        Tn = self.TL.tangents
+        cols = [tuple(T["color"]) for T in Tn] + [(0.0, 0.0, 0.0)] * (8 - len(Tn))
         static = {
             "uRes": (self.w, self.h),
             "uProj": 1 if proj == "equirect" else 0,
             "uFov": o["fov_deg"], "uTilt": o["tilt_deg"], "uSS": ss,
             "uSeed": float(P["seed"]),
-            "uLatRot": tuple(rot.T.flatten()),
+            "uVoidIn": C["void_inner"], "uVoidOut": C["void_outer"],
+            "uLatRot": mat(G["rot"]),
             "uCell": L["cell"], "uStrutR": L["strut_radius"], "uNodeR": L["node_radius"],
-            "uGraph": 0, "uGridH": H, "uExtent": L["extent"], "uXDelay": L["crosslink_delay"],
-            "uSeedPos": tuple(self.stats["root_world"]), "uStarSize": S["star_size_rad"],
+            "uGraph": 0, "uSpread0": 1, "uSpread1": 2,
+            "uGridH": G["H"], "uExtent": L["extent"], "uXDelay": L["crosslink_delay"],
+            "uSeedPos": tuple(G["stats"]["root_world"]), "uStarSize": S["star_size_rad"],
+            "uNumT": len(Tn), "uSpCol": cols,
+            "uSpLimit": [T["spread_limit"] for T in Tn] + [1.0] * (8 - len(Tn)),
+            "uSpSoft": look["spread_soft"], "uPulseW": look["pulse_width"], "uTintAmt": look["tint_amount"],
             "uColDeep": tuple(look["col_deep"]), "uColStrut": tuple(look["col_strut"]),
             "uColTip": tuple(look["col_tip"]), "uGlow": look["glow"], "uGlowW": look["glow_width"],
             "uTipGlow": look["tip_glow"], "uFogDist": look["fog_distance"], "uExposure": look["exposure"],
@@ -80,8 +84,42 @@ class Renderer:
             if k in self.prog:
                 self.prog[k].value = v
 
+    def uniforms(self, t):
+        TL = self.TL
+        cam, R = TL.camera(t)
+        u = {"uFront": TL.front(t), "uStar": TL.star(t),
+             "uCamPos": tuple(cam), "uCamRot": mat(R)}
+        fronts, pulses = [], []
+        for T in TL.tangents:
+            F = TL.spread_front(T, t)
+            fronts.append(F)
+            # wavefront glows while the colour is still travelling
+            pulses.append(0.0 if F < 0 else T["pulse"] * (1 - F / T["spread_limit"]) ** 1.5)
+        u["uSpFront"] = fronts + [-1.0] * (8 - len(fronts))
+        u["uSpPulse"] = pulses + [0.0] * (8 - len(pulses))
+        rib = np.zeros((4 * 24, 4), np.float32)
+        ribcol = [(0.0, 0.0, 0.0, 0.0)] * 4
+        flash = [(0.0, 0.0, 0.0, 0.0)] * 4
+        flashcol = [(0.0, 0.0, 0.0)] * 4
+        slot = fslot = 0
+        for T in TL.tangents:
+            r = TL.ribbon(T, t)
+            if r is not None and slot < 4:
+                rib[slot * 24:(slot + 1) * 24, :3] = r[0]
+                rib[slot * 24:(slot + 1) * 24, 3] = r[1]
+                ribcol[slot] = (*T["color"], T["width"])
+                slot += 1
+            f = TL.flash(T, t)
+            if f > 0.01 and fslot < 4:
+                flash[fslot] = (*T["land"], f)
+                flashcol[fslot] = tuple(T["color"])
+                fslot += 1
+        u.update({"uNumRib": slot, "uRib": [tuple(x) for x in rib], "uRibCol": ribcol,
+                  "uFlash": flash, "uFlashCol": flashcol})
+        return u
+
     def frame(self, t):
-        for k, v in {"uTime": t, **envelope(self.P, t)}.items():
+        for k, v in self.uniforms(t).items():
             if k in self.prog:
                 self.prog[k].value = v
         self.fbo.use()
@@ -127,7 +165,7 @@ def main():
     res = a.res or P["output"]["preview_res"]
     ss = a.ss or P["output"]["supersample"]
     proj = a.proj or P["output"]["projection"]
-    r = Renderer(P, res, proj, ss)
+    r = Renderer(P, res, proj, ss, a.params)
 
     if a.range:
         fps = P["output"]["fps"]

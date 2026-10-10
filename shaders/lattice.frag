@@ -1,30 +1,63 @@
 #version 330
-// Another Distraction — section 1 "Seed"
-// Stateless: every pixel is a pure function of (uTime, params, seed).
+// Another Distraction
+// Stateless: every pixel is a pure function of (uniforms for time t, params, seed).
 // Renders straight into a 180° equidistant (azimuthal) fisheye domemaster,
 // or an equirectangular frame for VR-headset preview.
+//
+// Spaces: world (audience at origin, +y zenith, -z front), lattice = uLatRot * world.
 
 out vec4 fragColor;
 
+// ---- output
 uniform vec2  uRes;
-uniform float uTime;
 uniform int   uProj;        // 0 = domemaster, 1 = equirectangular
-uniform float uFov;         // fisheye field of view, degrees (180 = hemisphere)
+uniform float uFov;         // fisheye field of view, degrees
 uniform float uTilt;        // dome tilt, degrees (tips zenith toward front)
 uniform int   uSS;          // supersampling per axis
-
 uniform float uSeed;
-uniform mat3  uLatRot;      // world -> lattice rotation
-uniform float uCell;        // lattice cell size
+
+// ---- camera
+uniform vec3  uCamPos;      // world
+uniform mat3  uCamRot;      // camera -> world
+uniform float uVoidIn;      // nothing closer than this to the camera
+uniform float uVoidOut;     // ...and struts fade in from uVoidIn to here
+
+// ---- lattice
+uniform mat3  uLatRot;      // world -> lattice
+uniform float uCell;
 uniform float uStrutR;
 uniform float uNodeR;
-uniform sampler3D uGraph;   // growth graph from lattice.py (r=path dist, g=edge bits, b=cross-link bits)
-uniform int   uGridH;       // grid half-size in cells
-uniform float uExtent;      // lattice bounding radius (lattice space)
-uniform vec3  uSeedPos;     // world-space seed point (= root node)
-uniform float uFront;       // growth front, in path-distance units
+uniform sampler3D uGraph;   // r = reveal path dist, g = edge bits, b = cross-link bits
+uniform int   uGridH;
+uniform float uExtent;
+uniform float uFront;       // growth front (path units)
 uniform float uXDelay;      // cross-links appear this far behind the front
 
+// ---- seed star
+uniform vec3  uSeedPos;     // world (= root node)
+uniform float uStar;
+uniform float uStarSize;
+
+// ---- colour brought back by tangents (indexed by tangent, max 8)
+uniform sampler3D uSpread0; // path distance from tangent 0..3's landing node
+uniform sampler3D uSpread1; // ...4..7
+uniform int   uNumT;
+uniform float uSpFront[8];  // how far each colour has travelled (path units, <0 = not yet)
+uniform float uSpLimit[8];  // how far it can ever go
+uniform float uSpPulse[8];  // brightness of the travelling wavefront
+uniform vec3  uSpCol[8];
+uniform float uSpSoft;      // soft edge of the stain (path units)
+uniform float uPulseW;      // width of the wavefront (path units)
+uniform float uTintAmt;     // how fully the colour replaces the cool base
+
+// ---- ribbons in flight (per active slot, max 4; 24 points each, tail -> head)
+uniform int   uNumRib;
+uniform vec4  uRib[96];     // xyz world, w intensity
+uniform vec4  uRibCol[4];   // rgb, w = width
+uniform vec4  uFlash[4];    // xyz world, w amplitude (landing flash)
+uniform vec3  uFlashCol[4];
+
+// ---- look
 uniform vec3  uColDeep;
 uniform vec3  uColStrut;
 uniform vec3  uColTip;
@@ -32,13 +65,12 @@ uniform float uGlow;
 uniform float uGlowW;
 uniform float uTipGlow;
 uniform float uFogDist;
-uniform float uStar;        // seed-star intensity (from envelope)
-uniform float uStarSize;    // radians
 uniform float uExposure;
 uniform int   uSteps;
 uniform float uFar;
 
 const float PI = 3.14159265359;
+const int K = 24;
 
 float hash31(vec3 p) {
     p = fract(p * 0.1031 + uSeed * 0.0173);
@@ -46,11 +78,14 @@ float hash31(vec3 p) {
     return fract((p.x + p.y) * p.z);
 }
 
-vec3 seedL;  // seed in lattice space
+vec3 camL;  // camera in lattice space
+
+ivec3 gridOf(vec3 id) { return ivec3(id) + uGridH; }
+bool inGrid(ivec3 g) { return all(greaterThanEqual(g, ivec3(0))) && all(lessThanEqual(g, ivec3(2 * uGridH))); }
 
 vec3 cellData(vec3 id) {
-    ivec3 g = ivec3(id) + uGridH;
-    if (any(lessThan(g, ivec3(0))) || any(greaterThan(g, ivec3(2 * uGridH)))) return vec3(-1.0, 0.0, 0.0);
+    ivec3 g = gridOf(id);
+    if (!inGrid(g)) return vec3(-1.0, 0.0, 0.0);
     return texelFetch(uGraph, g, 0).rgb;
 }
 
@@ -67,6 +102,29 @@ vec3 dirOf(int k) {
     float sg = (k % 2 == 0) ? 1.0 : -1.0;
     int a = k / 2;
     return vec3(a == 0, a == 1, a == 2) * sg;
+}
+
+// Colour carried back by tangents, at one lattice node.
+// Returns premultiplied colour (rgb) + coverage (a); emis = wavefront glow.
+vec4 spreadAt(vec3 id, out vec3 emis) {
+    emis = vec3(0.0);
+    vec4 acc = vec4(0.0);
+    ivec3 g = gridOf(id);
+    if (uNumT == 0 || !inGrid(g)) return acc;
+    vec4 s0 = texelFetch(uSpread0, g, 0);
+    vec4 s1 = uNumT > 4 ? texelFetch(uSpread1, g, 0) : vec4(-1.0);
+    for (int i = 0; i < 8; i++) {
+        if (i >= uNumT) break;
+        float d = i < 4 ? s0[i] : s1[i - 4];
+        float F = uSpFront[i];
+        if (d < 0.0 || F < 0.0) continue;
+        float lim = 1.0 - smoothstep(0.6 * uSpLimit[i], uSpLimit[i], d);
+        float w = clamp((F - d) / uSpSoft + 0.5, 0.0, 1.0) * lim * uTintAmt;
+        acc = acc * (1.0 - w) + vec4(uSpCol[i], 1.0) * w;
+        float x = (F - d) / uPulseW;
+        emis += uSpCol[i] * exp(-x * x) * lim * uSpPulse[i];
+    }
+    return acc;
 }
 
 // returns distance; tip = growth-tip proximity glow
@@ -103,7 +161,28 @@ float sdLattice(vec3 p, out float tip) {
         if (a1 > a0) d = min(d, sdSeg(q, dir * a0, dir * a1) - uStrutR);
         if (e < c) tip = max(tip, exp(-length(q - tipPos) / (uStrutR * 6.0)));
     }
+    // keep a bubble of clear space around the audience
+    d = max(d, uVoidIn - length(p - camL));
     return min(d, 0.5 * c);
+}
+
+// colour of the strut surface at p: cool base, blended along the strut
+// between the two nodes' carried-back colours
+vec3 strutColour(vec3 p, float tip, out vec3 emis) {
+    float c = uCell;
+    vec3 id = floor(p / c + 0.5);
+    vec3 q = p - id * c;
+    vec3 aq = abs(q);
+    vec3 dir = aq.x > aq.y && aq.x > aq.z ? vec3(sign(q.x), 0, 0)
+             : aq.y > aq.z ? vec3(0, sign(q.y), 0) : vec3(0, 0, sign(q.z));
+    float h = clamp(max(aq.x, max(aq.y, aq.z)) / c, 0.0, 0.5);
+    vec3 e0, e1;
+    vec4 s0 = spreadAt(id, e0);
+    vec4 s1 = spreadAt(id + dir, e1);
+    vec4 s = mix(s0, s1, h);
+    emis = mix(e0, e1, h);
+    vec3 base = mix(uColStrut, uColTip, clamp(tip * 1.5, 0.0, 1.0));
+    return base * (1.0 - s.a) + s.rgb * 0.95;
 }
 
 vec3 viewDir(vec2 frag) {
@@ -121,49 +200,101 @@ vec3 viewDir(vec2 frag) {
     // bottom of frame = front (-z), right of frame = audience right (+x)
     vec3 d = vec3(a.x * sin(theta), cos(theta), a.y * sin(theta));
     float tl = radians(uTilt);
-    // tilt about x: zenith tips toward front
     d = vec3(d.x, d.y * cos(tl) - d.z * sin(tl), d.y * sin(tl) + d.z * cos(tl));
     return normalize(d);
 }
 
-vec3 shade(vec3 rd) {
+// closest approach between a ray and a segment: returns distance, tRay = depth along the ray, h = position on segment
+float raySeg(vec3 ro, vec3 rd, vec3 a, vec3 b, out float tRay, out float h) {
+    vec3 ba = b - a, w0 = ro - a;
+    float bb = dot(rd, ba), cc = dot(ba, ba), dd = dot(rd, w0), ee = dot(ba, w0);
+    float den = cc - bb * bb;
+    h = den > 1e-8 ? clamp((ee - bb * dd) / den, 0.0, 1.0) : 0.0;
+    vec3 pt = a + ba * h;
+    tRay = max(dot(pt - ro, rd), 0.0);
+    return length(ro + rd * tRay - pt);
+}
+
+vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
+    vec3 col = vec3(0.0);
+    for (int r = 0; r < 4; r++) {
+        if (r >= uNumRib) break;
+        float w = uRibCol[r].w;
+        float best = 0.0;
+        for (int i = 0; i < K - 1; i++) {
+            vec4 a = uRib[r * K + i], b = uRib[r * K + i + 1];
+            float tr, h;
+            float d = raySeg(ro, rd, a.xyz, b.xyz, tr, h);
+            float inten = mix(a.w, b.w, h);
+            float ww = w * (0.35 + 0.65 * mix(float(i), float(i + 1), h) / float(K - 1)); // tapers to the tail
+            float g = inten * (exp(-(d * d) / (ww * ww)) + 0.12 * exp(-d / (ww * 5.0)));
+            if (tr > tHit) g *= 0.1;           // behind a strut
+            best = max(best, g);
+        }
+        col += mix(uRibCol[r].rgb, vec3(1.0), 0.35) * best;
+    }
+    // landing flashes
+    for (int f = 0; f < 4; f++) {
+        if (uFlash[f].w <= 0.0) continue;
+        vec3 to = uFlash[f].xyz - ro;
+        float dist = length(to);
+        float ang = acos(clamp(dot(rd, to / dist), -1.0, 1.0));
+        col += uFlashCol[f] * uFlash[f].w * (exp(-pow(ang * dist / 0.25, 2.0)) + 0.2 * exp(-ang * dist / 1.2));
+    }
+    return col;
+}
+
+vec3 shade(vec3 rdCam) {
+    vec3 rd = uCamRot * rdCam;            // world-space ray
     vec3 col = vec3(0.0);
 
     // seed star
-    float ang = acos(clamp(dot(rd, normalize(uSeedPos)), -1.0, 1.0));
+    vec3 toSeed = normalize(uSeedPos - uCamPos);
+    float ang = acos(clamp(dot(rd, toSeed), -1.0, 1.0));
     col += uColTip * uStar * (exp(-pow(ang / uStarSize, 2.0)) + 0.25 * exp(-ang / (uStarSize * 6.0)));
 
-    if (uFront <= 0.0) return col;
-
-    vec3 ro = uLatRot * vec3(0.0);
-    vec3 rl = uLatRot * rd;
-    float t = 0.05;
-    float glow = 0.0, tipg = 0.0;
-    vec3 hitCol = vec3(0.0);
-    for (int i = 0; i < uSteps; i++) {
-        vec3 p = ro + rl * t;
-        float tip;
-        float d = sdLattice(p, tip);
-        float fog = exp(-t / uFogDist);
-        if (d < 0.49 * uCell) glow += fog / (1.0 + pow(max(d, 0.0) / uGlowW, 2.0));  // occupied cells only: keep the sky black
-        tipg += fog * tip;
-        if (d < 0.0008 * t) {
-            float edge = 1.0;
-            vec3 base = mix(uColDeep * 2.5, uColStrut, fog);
-            hitCol = mix(base, uColTip, clamp(tip * 1.5, 0.0, 1.0)) * mix(0.35, 1.0, fog) * edge;
-            break;
+    float tHit = 1e9;
+    if (uFront > 0.0) {
+        vec3 ro = camL;
+        vec3 rl = uLatRot * rd;
+        float t = 0.05;
+        vec3 glow = vec3(0.0);
+        float tipg = 0.0;
+        vec3 hitCol = vec3(0.0);
+        for (int i = 0; i < uSteps; i++) {
+            vec3 p = ro + rl * t;
+            float tip;
+            float d = sdLattice(p, tip);
+            float fog = exp(-t / uFogDist);
+            float near = smoothstep(uVoidIn, uVoidOut, t);
+            if (d < 0.49 * uCell) {          // occupied cells only: keep the sky black
+                float g = fog * near / (1.0 + pow(max(d, 0.0) / uGlowW, 2.0));
+                vec3 e;
+                vec4 s = spreadAt(floor(p / uCell + 0.5), e);
+                glow += g * (uColDeep * (1.0 - s.a) + s.rgb * 0.9) + e * g * 0.6;
+            }
+            tipg += fog * near * tip;
+            if (d < 0.0008 * t) {
+                vec3 emis;
+                vec3 sc = strutColour(p, tip, emis);
+                vec3 base = mix(uColDeep * 2.5, sc, fog);
+                hitCol = (base * mix(0.35, 1.0, fog) + emis * fog * 0.35) * near;
+                tHit = t;
+                break;
+            }
+            // don't step past the current cell: neighbours aren't in the SDF
+            vec3 q = p - floor(p / uCell + 0.5) * uCell;
+            vec3 inv = 1.0 / max(abs(rl), vec3(1e-5));
+            vec3 te = (0.5 * uCell - q * sign(rl)) * inv;
+            float tExit = min(te.x, min(te.y, te.z)) + 0.002;
+            t += max(min(d * 0.9, tExit), 0.0015);
+            if (t > uFar || length(p) > uExtent + uCell) break;
         }
-        // don't step past the current cell: neighbours aren't in the SDF
-        vec3 q = p - floor(p / uCell + 0.5) * uCell;
-        vec3 inv = 1.0 / max(abs(rl), vec3(1e-5));
-        vec3 te = (0.5 * uCell - q * sign(rl)) * inv;
-        float tExit = min(te.x, min(te.y, te.z)) + 0.002;
-        t += max(min(d * 0.9, tExit), 0.0015);
-        if (t > uFar || length(p) > uExtent + uCell) break;
+        col += hitCol;
+        col += glow * uGlow * 0.02;
+        col += uColTip * tipg * uTipGlow * 0.02;
     }
-    col += hitCol;
-    col += uColDeep * glow * uGlow * 0.02;
-    col += uColTip * tipg * uTipGlow * 0.02;
+    col += ribbons(uCamPos, rd, tHit);
     return col;
 }
 
@@ -174,18 +305,16 @@ vec3 tonemap(vec3 x) {
 }
 
 void main() {
-    seedL = uLatRot * uSeedPos;
+    camL = uLatRot * uCamPos;
     vec3 acc = vec3(0.0);
-    int n = 0;
     for (int sy = 0; sy < uSS; sy++)
     for (int sx = 0; sx < uSS; sx++) {
         vec2 off = (vec2(sx, sy) + 0.5) / float(uSS);
         vec3 rd = viewDir(gl_FragCoord.xy - 0.5 + off);
         if (dot(rd, rd) < 0.5) continue;  // outside the dome circle
         acc += shade(rd);
-        n++;
     }
-    vec3 col = n > 0 ? acc / float(uSS * uSS) : vec3(0.0);
+    vec3 col = acc / float(uSS * uSS);
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients
