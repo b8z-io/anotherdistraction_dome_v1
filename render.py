@@ -10,7 +10,7 @@ Examples
   python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k  # final-ish
   python render.py --times 30 --proj equirect --res 2048           # VR preview
 """
-import argparse, json, math, os, time
+import argparse, json, math, os, sys, time
 from pathlib import Path
 
 import numpy as np
@@ -43,7 +43,11 @@ class Renderer:
         self.P = P
         self.w = res * 2 if proj == "equirect" else res
         self.h = res
-        self.ctx = moderngl.create_standalone_context(backend="egl")
+        # Linux servers: headless EGL. Mac (CGL) / Windows (WGL): the default context.
+        if sys.platform.startswith("linux"):
+            self.ctx = moderngl.create_standalone_context(backend="egl")
+        else:
+            self.ctx = moderngl.create_standalone_context(require=330)
         frag = (ROOT / "shaders" / "lattice.frag").read_text()
         vert = """#version 330
         in vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"""
