@@ -37,6 +37,7 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
 | `render.py` | Headless renderer: contact sheets, image sequences, VR previews. |
+| `movie.py` | Stitches a frame folder into H.264 / HEVC / ProRes — bundled ffmpeg, nothing extra to install. |
 | `previews/` | Contact sheets and preview clips, versioned by name (`seed_v2_…`). |
 | `frames/` | Rendered image sequences (git-ignored). |
 
@@ -60,17 +61,30 @@ default on Mac/Windows) — no edits needed.
 # contact sheet of chosen moments (fast — use this for every tweak)
 python render.py --times 0 6 10 14 18 22 26 30 34 38 42 45 --sheet previews/sheet.png
 
-# preview sequence at 512px, then encode to a clip
-python render.py --range 0 45 --res 512 --out frames/seed_512
-ffmpeg -framerate 30 -pattern_type glob -i 'frames/seed_512/frame_*.png' \
-       -c:v libx264 -crf 14 -pix_fmt yuv420p previews/seed_512.mp4
+# preview sequence at 512px + an H.264 movie of it (frames/seed_512.mp4)
+python render.py --range 0 45 --res 512 --out frames/seed_512 --movie
 
 # finals: 4K domemaster, 2×2 supersampled
-python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k
+python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k --movie prores
 
 # VR-headset check (2:1 equirectangular)
 python render.py --times 40 --proj equirect --res 2048 --out frames/vr
 ```
+
+### Stitching frames into a movie
+
+`movie.py` does it with the ffmpeg that `pip install -r requirements.txt`
+brings along (imageio-ffmpeg) — no Homebrew or separate ffmpeg install.
+Frame rate comes from `params.json`.
+
+```bash
+python movie.py frames/seed_512                      # H.264 .mp4, plays anywhere (fine up to ~2K)
+python movie.py frames/4k --codec prores             # ProRes 422 HQ .mov, for Resolve
+python movie.py frames/4k --codec hevc -o seed.mp4   # HEVC, smaller files for reviewing 4K+
+```
+
+Or add `--movie [h264|hevc|prores]` to any `render.py --range` run. Resolve
+can also import a frame folder directly as an image sequence.
 
 Frames are named by frame number at the project fps (`frame_01350.png` =
 45.0s at 30fps), so partial renders and re-renders slot straight into an

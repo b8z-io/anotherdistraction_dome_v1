@@ -9,6 +9,7 @@ Examples
   python render.py --range 0 45 --res 1024 --out frames/seed       # sequence
   python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k  # final-ish
   python render.py --times 30 --proj equirect --res 2048           # VR preview
+  python render.py --range 0 45 --res 512 --out frames/seed --movie   # frames + seed.mp4
 """
 import argparse, json, math, os, sys, time
 from pathlib import Path
@@ -118,6 +119,8 @@ def main():
     ap.add_argument("--out", default="frames")
     ap.add_argument("--sheet")
     ap.add_argument("--cols", type=int, default=4)
+    ap.add_argument("--movie", nargs="?", const="h264", choices=["h264", "hevc", "prores"],
+                    help="after a --range render, stitch the frames into a movie (default h264)")
     a = ap.parse_args()
 
     P = json.loads(Path(a.params).read_text())
@@ -145,6 +148,9 @@ def main():
         print(f"t={t:6.2f}s  {time.time() - t0:6.1f}s elapsed", flush=True)
     if a.sheet:
         contact_sheet(imgs, [f"{t:.1f}s" for t in times], a.sheet, a.cols)
+    elif a.movie:
+        from movie import make_movie
+        make_movie(a.out, codec=a.movie, fps=P["output"]["fps"])
 
 
 if __name__ == "__main__":
