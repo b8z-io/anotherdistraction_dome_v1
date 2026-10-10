@@ -13,6 +13,19 @@ audience, frame edge = springline. The same shader can also output an
 
 ---
 
+## How it fits together
+
+```
+params.json ──► lattice.py ──► timeline.py ──┬──► render.py ─► frames ─┐
+ (every knob)   (growth graph)  (one shared    │   (+ lattice.frag)      ├─► movie.py ─► .mp4 / .mov
+                                 timeline)     └──► score.py ─► .wav ────┘
+```
+
+`timeline.py` is the single source of truth for *when* and *where*: growth
+front, camera, each tangent's flight, landing and colour spread. The picture
+and the sound both read it, so a tangent's sound comes from where its ribbon
+is, on the exact frame — change a time in `params.json` and both move together.
+
 ## How it stays repeatable
 
 * **Every frame is a pure function of `(time, params.json)`.** Nothing is
@@ -34,12 +47,15 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | File | What it is |
 |---|---|
 | `params.json` | Every knob for the piece. |
+| `timeline.py` | The shared timeline: growth front, camera pose, tangent ribbons, landing flashes, colour spread — all pure functions of time. |
+| `score.py` | The procedural soundtrack, generated from the timeline: stereo mix, AmbiX (first-order ambisonics) for dome speaker arrays, and stems. |
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
 | `render.py` | Headless renderer: contact sheets, image sequences, VR previews. |
 | `movie.py` | Stitches a frame folder into H.264 / HEVC / ProRes — bundled ffmpeg, nothing extra to install. |
 | `previews/` | Contact sheets and preview clips, versioned by name (`seed_v2_…`). |
 | `frames/` | Rendered image sequences (git-ignored). |
+| `score/` | Generated audio (git-ignored — re-run `score.py`, it's deterministic). |
 
 ## Setup
 
@@ -67,6 +83,10 @@ python render.py --range 0 45 --res 512 --out frames/seed_512 --movie
 # finals: 4K domemaster, 2×2 supersampled
 python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k --movie prores
 
+# soundtrack, then a preview with sound
+python score.py --end 90
+python render.py --range 0 90 --res 512 --out frames/prev --movie --audio score/mix_stereo.wav
+
 # VR-headset check (2:1 equirectangular)
 python render.py --times 40 --proj equirect --res 2048 --out frames/vr
 ```
@@ -81,7 +101,11 @@ Frame rate comes from `params.json`.
 python movie.py frames/seed_512                      # H.264 .mp4, plays anywhere (fine up to ~2K)
 python movie.py frames/4k --codec prores             # ProRes 422 HQ .mov, for Resolve
 python movie.py frames/4k --codec hevc -o seed.mp4   # HEVC, smaller files for reviewing 4K+
+python movie.py frames/prev --audio score/mix_stereo.wav   # lay in the soundtrack
 ```
+
+`--audio` offsets the soundtrack to the first frame, so a partial render
+(say 60–90s) still lines up.
 
 Or add `--movie [h264|hevc|prores]` to any `render.py --range` run. Resolve
 can also import a frame folder directly as an image sequence.
@@ -89,6 +113,23 @@ can also import a frame folder directly as an image sequence.
 Frames are named by frame number at the project fps (`frame_01350.png` =
 45.0s at 30fps), so partial renders and re-renders slot straight into an
 existing sequence for Resolve.
+
+## The soundtrack
+
+`score.py` writes to `score/`:
+
+* `mix_stereo.wav` — the stereo mix (24-bit / 48 kHz).
+* `mix_ambix.wav` — first-order ambisonics (AmbiX: ACN/SN3D, W Y Z X), for decoding to a dome's speaker array. Directions are relative to the audience's front, so it follows the camera's turn.
+* `stem_drone.wav`, `stem_pings.wav`, `stem_tangents.wav`, `stem_reverb.wav` — they sum to the stereo mix; use them to rebalance in Resolve.
+
+What you hear:
+
+* **Drone** (D/A) — the lattice. Its upper partials open as it grows; a faint high D is the seed star.
+* **Pings** — every node that switches on rings a soft bell in D pentatonic, pitched by its height on the dome and panned to where it is. Early on you hear single notes; by 45s it's a shimmer.
+* **Tangents** — each one's motif starts `precue_s` *before* the ribbon appears, from where it will emerge — the ears get distracted first — then follows the ribbon round the dome, with a whoosh that rides its speed. Landing: a chord blooms where it touches down, with a low thump. A warm pad in that chord then holds for as long as its colour stays in the lattice.
+
+An AI music bed (ElevenLabs Music / video-to-music) can sit under this later;
+the procedural layer is the part that's locked to picture.
 
 ## The tweak loop
 
@@ -125,10 +166,27 @@ existing sequence for Resolve.
 * `star_fade_in_s` — fade-in start/end, seconds.
 * `star_intensity`, `star_size_rad` — brightness and size (radians).
 
+**Keyframes.** Anything that changes over the piece is a list of
+`[seconds, value]` pairs, joined by a smooth curve that never overshoots and
+holds its first/last value outside the range.
+
 **`growth`**
-* `start_s` / `end_s` — when growth starts and when this section's growth ends.
-* `end_path` — how far along the branches the front has travelled by `end_s` (bigger = more of the dome covered).
-* `curve_power` — easing. >1 starts slow and accelerates; 1 = constant pace.
+* `front_keys` — how far along the branches the growth front has travelled at each time (path units). Steeper = faster growth; flat = growth pauses.
+
+**`camera`** — the audience's viewpoint
+* `x_keys`, `y_keys`, `z_keys` — position over time (y is up; the audience starts at the origin). Rising (y) is the gentlest motion on a dome.
+* `yaw_keys` — slow turn about the zenith, degrees (positive = front turns toward the right). Keep it under ~1°/s.
+* `void_inner` / `void_outer` — nothing closer than `void_inner` to the audience; struts fade in out to `void_outer`.
+
+**`tangents`** — a list; each one is a distraction. Directions are `[azimuth, elevation]` relative to the audience (az 0 front, 90 right, 180 behind; el 0 horizon, 90 zenith).
+* `launch_s`, `flight_s`, `absorb_s` — when it peels off a node, how long it flies, how long the tail takes to sink in after landing.
+* `from_dir` — roughly where on the dome it breaks away (the nearest grown node is used).
+* `out_dir`, `out_dist`, `loop_radius` — where it swings out to, how far, and the size of the loop it makes there.
+* `land_dir` — roughly where it lands.
+* `color`, `width`, `trail`, `intensity` — the ribbon.
+* `spread_speed`, `spread_limit`, `pulse` — how fast its colour travels through the lattice from the landing node, how far it can reach (path units), and how bright the travelling wavefront is.
+* `precue_s` — how early its sound starts before it appears.
+* `sound` — `motif` (notes it plays in flight), `chord` (landing bloom + pad), and levels.
 
 **`look`**
 * `col_deep` — the deep-blue of distant struts and glow haze.
@@ -136,6 +194,12 @@ existing sequence for Resolve.
 * `glow`, `glow_width` — soft halo around struts. `tip_glow` — brightness of growing tips.
 * `fog_distance` — how quickly distance fades struts into `col_deep`.
 * `exposure` — overall brightness before tone-mapping (ACES). Keep the dome dark: a concave screen reflects onto itself.
+* `tint_amount`, `spread_soft`, `pulse_width` — how fully carried-back colour replaces the cool base, the softness of the stain's edge, and the width of the travelling wavefront.
+
+**`score`**
+* `drone` — `notes`, `level`, `star_note`, `star_level`.
+* `pings` — `level`.
+* `reverb_send` (per layer), `reverb_level`, `master_peak_db`.
 
 **`render`**
 * `steps`, `far` — raymarch quality limits. Rarely need touching.
@@ -145,7 +209,7 @@ existing sequence for Resolve.
 | # | Section | Time | Status |
 |---|---|---|---|
 | 1 | **Seed** — star at the zenith grows into a cool, ordered lattice | 0:00–0:45 | ✅ v2 |
-| 2 | **First tug** — sound cue first, then a bright ribbon breaks away toward the horizon and returns warm, colour seeping into the lattice | 0:45–1:30 | — |
+| 2 | **First tug** — sound cue first, then a bright ribbon breaks away toward the horizon and returns warm, colour seeping into the lattice; the audience starts to rise | 0:45–1:30 | ✅ v1 |
 | 3 | **Escalation + hyperfocus** — competing threads; then everything snaps to one tangent that blooms to fill the dome (flow, as joy) | 1:30–3:00 | — |
 | 4 | **Overload → darkness** — too many threads, then a hard cut to black and silence | 3:00–3:45 | — |
 | 5 | **Rebuild** — the lattice regrows from every colour the tangents brought back | 3:45–5:00 | — |
@@ -165,4 +229,5 @@ tangent, panned to where it appears on the dome (separate stems).
 ## Version history
 
 * **Seed v1** — stateless hash-driven lattice. Issues: ~14s of dead air before growth, orphan fragments floating unconnected, flat white look.
+* **First tug v1** — shared timeline; camera still through section 1, then a slow rise and gentle turn; two tangents (amber, rose) with landing flashes and colour spreading through the lattice; procedural score (drone, node pings, tangent motifs with pre-cue, whoosh, bloom, pad) in stereo + AmbiX.
 * **Seed v2** — precomputed growth graph (no orphans, growth travels along branches, ~10× faster), first branch by ~8s, true-black sky, cooler struts, brighter tips, 2× supersampling.
