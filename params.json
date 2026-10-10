@@ -1,0 +1,75 @@
+{
+  "_note": "Every knob for the piece lives here. Change one or two, commit, re-render.",
+  "seed": 1,
+  "output": {
+    "projection": "domemaster",
+    "fov_deg": 180,
+    "tilt_deg": 0,
+    "fps": 30,
+    "preview_res": 768,
+    "supersample": 1
+  },
+  "lattice": {
+    "cell": 2.0,
+    "strut_radius": 0.018,
+    "node_radius": 0.045,
+    "rotation_deg": [
+      35.26,
+      45.0,
+      0.0
+    ],
+    "reveal_jitter_cells": 0.8,
+    "audience_void_radius": 6.0,
+    "crosslink_density": 0.12,
+    "crosslink_ramp_s": [
+      25.0,
+      45.0
+    ],
+    "site_density": 0.55
+  },
+  "seed_point": {
+    "position": [
+      0.0,
+      13.0,
+      -1.5
+    ],
+    "star_fade_in_s": [
+      0.0,
+      4.0
+    ],
+    "star_intensity": 1.6,
+    "star_size_rad": 0.004
+  },
+  "growth": {
+    "start_s": 5.0,
+    "end_s": 45.0,
+    "end_radius": 14.0,
+    "curve_power": 1.6
+  },
+  "look": {
+    "col_deep": [
+      0.05,
+      0.16,
+      0.42
+    ],
+    "col_strut": [
+      0.55,
+      0.8,
+      1.0
+    ],
+    "col_tip": [
+      0.9,
+      0.97,
+      1.0
+    ],
+    "glow": 0.6,
+    "glow_width": 0.06,
+    "tip_glow": 1.2,
+    "fog_distance": 18.0,
+    "exposure": 0.9
+  },
+  "render": {
+    "steps": 200,
+    "far": 45.0
+  }
+}
