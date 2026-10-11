@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "tools" / "playground"
 
 
-def shader_es300():
-    s = (ROOT / "shaders" / "lattice.frag").read_text()
+def shader_es300(name="lattice.frag"):
+    s = (ROOT / "shaders" / name).read_text()
     head = "#version 330"
     assert s.startswith(head), "shader should start with #version 330"
     return ("#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler3D;\n"
@@ -30,6 +30,7 @@ def main():
     parts = {
         "__PARAMS__": json.dumps(params, indent=2).replace("</", "<\\/"),
         "__SHADER__": shader_es300(),
+        "__POST__": shader_es300("post.frag"),
         "__CORE__": (SRC / "core.js").read_text(),
         "__APP__": (SRC / "app.js").read_text(),
         "__QMETA__": (ROOT / "assets" / "text" / "quote.json").read_text(),

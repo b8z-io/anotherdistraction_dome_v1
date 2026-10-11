@@ -9,6 +9,11 @@
     "preview_res": 768,
     "supersample": 2
   },
+  "reel": {
+    "pitch_deg": 52,
+    "vfov_deg": 120,
+    "text_scale": 0.65
+  },
   "lattice": {
     "cell": 2.0,
     "strut_radius": 0.018,
@@ -1212,7 +1217,7 @@
     },
     "inhale": {
       "start": 218,
-      "end": 221.4,
+      "end": 222.0,
       "level": 0.2
     },
     "nova": {
@@ -1251,7 +1256,7 @@
     "vivid": 1.15
   },
   "show": {
-    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound. lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
+    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound (flat now: the swell runs straight into the supernova). lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
     "end_s": 289.0,
     "master_keys": [
       [
@@ -1266,22 +1271,6 @@
     "audio_keys": [
       [
         0,
-        1
-      ],
-      [
-        221.4,
-        1
-      ],
-      [
-        221.5,
-        0
-      ],
-      [
-        221.98,
-        0
-      ],
-      [
-        222.0,
         1
       ],
       [
@@ -1385,8 +1374,44 @@
       ]
     ]
   },
+  "dof": {
+    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that softness creeps in gently (eased) over the next `falloff` units, up to max_deg of blur, and out-of-focus parts dim by up to `dim`. Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
+    "focus_radius": 8.0,
+    "falloff": 30.0,
+    "max_deg": 0.6,
+    "rack_s": 0.7,
+    "taps": 64,
+    "strength_keys": [
+      [
+        0,
+        0
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        53,
+        1
+      ],
+      [
+        214,
+        1
+      ],
+      [
+        218,
+        0
+      ],
+      [
+        400,
+        0
+      ]
+    ],
+    "dim": 0.2
+  },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
+    "font": "assets/fonts/SpaceGrotesk.ttf",
     "font_weight": 500,
     "dir": [
       0,
@@ -1409,7 +1434,7 @@
         "in": 228.0,
         "voice": "assets/voice/line1.wav",
         "voice_at": 228.7,
-        "out": 232.9
+        "out": 233.26
       },
       {
         "rows": [
@@ -1417,10 +1442,10 @@
           "in a brilliant blaze",
           "than it should be stifled by dry-rot."
         ],
-        "in": 233.5,
+        "in": 233.86,
         "voice": "assets/voice/line2.wav",
-        "voice_at": 234.2,
-        "out": 242.7
+        "voice_at": 234.56,
+        "out": 243.36
       },
       {
         "rows": [
@@ -1428,43 +1453,43 @@
           "every atom of me in magnificent glow,",
           "than a sleepy and permanent planet."
         ],
-        "in": 243.3,
+        "in": 243.96,
         "voice": "assets/voice/line3.wav",
-        "voice_at": 244.0,
-        "out": 253.96
+        "voice_at": 244.66,
+        "out": 254.77
       },
       {
         "rows": [
           "The function of man is to live,",
           "not to exist."
         ],
-        "in": 254.56,
+        "in": 255.37,
         "voice": "assets/voice/line4.wav",
-        "voice_at": 255.26,
-        "out": 260.48
+        "voice_at": 256.07,
+        "out": 261.6
       },
       {
         "rows": [
           "I shall not waste my days",
           "trying to prolong them."
         ],
-        "in": 261.08,
+        "in": 262.2,
         "voice": "assets/voice/line5.wav",
-        "voice_at": 261.78,
-        "out": 266.32
+        "voice_at": 262.9,
+        "out": 267.63
       },
       {
         "rows": [
           "I shall use my time."
         ],
-        "in": 266.92,
+        "in": 268.23,
         "voice": "assets/voice/line6.wav",
-        "voice_at": 267.62,
+        "voice_at": 268.93,
         "out": 275.5
       }
     ],
     "credit": "\u2014 Jack London",
-    "credit_in": 269.0,
+    "credit_in": 270.33,
     "credit_gap_deg": 4.0
   },
   "nova": {

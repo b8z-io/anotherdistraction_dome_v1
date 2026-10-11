@@ -13,7 +13,8 @@ and one last meteor.
 Rendered straight into a **180° equidistant (azimuthal) fisheye
 domemaster**: centre of frame = zenith, bottom of frame = front of the
 audience, frame edge = springline. The same shader can also output an
-**equirectangular** frame for checking in a VR headset.
+**equirectangular** frame for checking in a VR headset, and a **9:16 reel**
+view for phones (what you'd see lying back under the dome).
 
 ---
 
@@ -76,10 +77,12 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `timeline.py` | The shared timeline: growth front, camera pose, tangent ribbons, landing flashes, colour spread — all pure functions of time. |
 | `score.py` | The procedural soundtrack, generated from the timeline: stereo mix, AmbiX (first-order ambisonics) for dome speaker arrays, and stems. |
 | `tools/make_quote.py` | Typesets the credo cards into `assets/text/quote.png` (glyphs + legibility halo) for the dome and the playground. |
-| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4): four takes, take 2 split into one clip per card (`lines.json` records provenance and durations). |
+| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4). `softly/` holds the four `[softly]` takes; take 3 is split into one clip per card (`line1..6.wav`; `lines.json` records provenance and durations). The earlier neutral takes are `take1..4.mp3`. |
+| `tools/split_voice.py` | Splits a narration take at its pauses into `line1..6.wav` and re-times the credo cards in `params.json` to fit. |
 | `assets/fonts/` | EB Garamond (SIL Open Font License, see `OFL.txt`). |
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
+| `shaders/post.frag` | Second pass: depth of field (a bubble of focus around the newest blob), then tonemap. |
 | `render.py` | Headless renderer: contact sheets, image sequences, VR previews. |
 | `movie.py` | Stitches a frame folder into H.264 / HEVC / ProRes — bundled ffmpeg, nothing extra to install. |
 | `tools/playground.html` | Live in-browser preview with a control for every setting; exports `params.json`. Built by `tools/build_playground.py` from `tools/playground/`. |
@@ -119,6 +122,16 @@ python render.py --range 0 90 --res 512 --out frames/prev --movie --audio score/
 
 # VR-headset check (2:1 equirectangular)
 python render.py --times 40 --proj equirect --res 2048 --out frames/vr
+
+# 9:16 phone / Instagram cut: overload -> end, 720x1280, sized to just under 30 MB
+python render.py --range 180 289 --proj reel --res 1280 --ss 1 --out frames/reel
+python movie.py frames/reel --audio score/mix_stereo.wav --size-mb 30 --fade-in 1
+# full Instagram quality on a fast machine: --res 1920 --ss 2 (1080x1920)
+
+# 4K60 domemaster master with sound, streamed straight into HEVC (no PNGs —
+# at 4096² those are ~15 MB each, ~250 GB for the piece). ~2–4 GB result.
+python render.py --range 0 289 --res 4096 --ss 2 --fps 60 \
+    --audio score/mix_stereo.wav --stream another_distraction_4k60.mp4
 ```
 
 ### Stitching frames into a movie
@@ -135,10 +148,15 @@ python movie.py frames/prev --audio score/mix_stereo.wav   # lay in the soundtra
 ```
 
 `--audio` offsets the soundtrack to the first frame, so a partial render
-(say 60–90s) still lines up.
+(say 60–90s) still lines up. `--size-mb N` does a 2-pass H.264 that fills
+just under N MB (it works out the bitrate from the length), and
+`--fade-in S` fades picture and sound up from black for a cut that starts
+mid-piece.
 
 Or add `--movie [h264|hevc|prores]` to any `render.py --range` run. Resolve
 can also import a frame folder directly as an image sequence.
+
+`--resume` skips frames already in the output folder, so a long render that gets interrupted just carries on when you re-run the same command.
 
 Frames are named by frame number at the project fps (`frame_01350.png` =
 45.0s at 30fps), so partial renders and re-renders slot straight into an
@@ -182,12 +200,19 @@ the procedural layer is the part that's locked to picture.
 * `seed` — integer. Picks which lattice grows. Change it for a whole new structure.
 
 **`output`**
-* `projection` — `domemaster` or `equirect`.
+* `projection` — `domemaster`, `equirect` or `reel` (usually chosen with `--proj`).
 * `fov_deg` — fisheye field of view (180 = hemisphere; >180 for domes that need overscan).
 * `tilt_deg` — dome tilt. Tips the zenith toward the front for tilted/unidirectional domes.
 * `fps` — frame rate (30 now; 60 is a parameter change, not a rebuild).
 * `preview_res` — default square size when `--res` isn't given.
 * `supersample` — samples per pixel per axis (2 = 4 samples). Kills shimmer on thin struts.
+
+**`reel`** — the 9:16 phone view (`--proj reel`; `--res` is the height)
+* `pitch_deg` — elevation of the frame centre (52 puts the zenith star near the top and the credo mid-frame).
+* `vfov_deg` — vertical field of view of the equidistant fisheye (120).
+* `text_scale` — credo size relative to the dome (0.65 keeps the widest Space Grotesk card clear of Instagram's side buttons).
+
+**`quote.font`** — the credo typeface (a .ttf under `assets/fonts/`; variable fonts use `font_weight`). Twelve OFL options ship in `assets/fonts/`, compared in `previews/font_options.png`: EB Garamond (default), Cormorant Garamond, Libre Baskerville, Lora, Fraunces, Playfair Display, Cinzel, Josefin Sans, Jost, Montserrat, Raleway, Space Grotesk. Change it, then run `python tools/make_quote.py` (and `tools/build_playground.py` for the playground).
 
 **`lattice`** — the ordered structure
 * `cell` — spacing between lattice nodes (world units; the audience is at the origin).
@@ -258,6 +283,15 @@ holds its first/last value outside the range.
 
 **`tangents[].fade_s`** — `[start, length]`: the comet's colour drains away (the hyperfocus flood receding). Leave out to keep it.
 
+**`dof`** — depth of field as a bubble of focus that follows the shiny thing
+* The lens locks on to the newest coloured blob: its head while it flies, then the node it landed on while its colour spreads. When the next one launches, focus glides to it over `rack_s` (frantic in the overload).
+* `focus_radius` — everything within this distance of the blob, in 3D, stays sharp (world units; a lattice cell is 2).
+* `falloff` — beyond that radius, focus fades gently over this much further distance until fully soft. Small = a crisp edge to the bubble, large = a slow drop-off.
+* `max_deg` — blur at the far end of the fade, in degrees of the dome (so the look is the same at 512 or 8K). 0.3–0.6 is subtle. The blur is eased in (a whisper just outside the radius, building further out) and Gaussian, so thin struts soften rather than double up.
+* `dim` — out-of-focus parts also darken by up to this much (0–1), steering the eye without more blur.
+* `strength_keys` — 0–1 over the show. Off until the first comet, and from the supernova on so the credo stays crisp.
+* `taps` — blur samples per pixel (64; never fewer than 32).
+
 **`nova`** — the supernova. Pair it with `growth.front_keys`: the front drops to 0 just before (the inhale, everything retracting into the star) and races back out after.
 * `t` — the burst. `shell_speed`, `shell_width`, `intensity`, `decay_s` — the rainbow shock ring sweeping out over the audience.
 * `level`, `hue_per_path` — after the burst the lattice wears every colour, in rings out from the star (the comets' own colours sit on top).
@@ -304,6 +338,9 @@ tangent, panned to where it appears on the dome (separate stems).
   (Resolve Studio needed for output above 4K).
 
 ## Version history
+
+* **Full piece v1.3** — depth of field: a bubble of focus follows the newest comet and racks to each new one (render.py, playground, parity-tested); credo set in Space Grotesk (font is a parameter, 12 OFL options); `render.py --fps / --stream`.
+* **Full piece v1.2** — credo re-voiced in Eleven v4 `[softly]` mode (take 3), cards re-timed to it; `--proj reel` 9:16 phone view; `movie.py --size-mb / --fade-in`; `tools/split_voice.py`.
 
 * **Full piece v1** — sections 3–8: up to 16 comets with distinct hues, hyperfocus flood + focus dimming, overload, the supernova ending (inhale, held breath, shock ring, every-colour regrowth), the credo in light with Batesy's narration, afterglow, the closing meteor; matching score; playground covers all of it.
 * **Seed v1** — stateless hash-driven lattice. Issues: ~14s of dead air before growth, orphan fragments floating unconnected, flat white look.

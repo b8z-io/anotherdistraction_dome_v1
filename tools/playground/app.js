@@ -7,17 +7,29 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const DEFAULTS = JSON.parse($("#params-default").textContent);
   const FRAG = $("#frag-src").textContent;
+  const POST = $("#post-src").textContent;
   const QMETA = JSON.parse($("#quote-meta").textContent);
-  const STORE = "anotherdistraction.playground.params.v1";
+  const STORE = "anotherdistraction.playground.params.v4";
   const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
   const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
   // ---------------------------------------------------------------- state
+  // a saved draft from an older version may be missing newer settings: fill them from the defaults
+  const isObj = (x) => x && typeof x === "object" && !Array.isArray(x);
+  function fillDefaults(p, d) {
+    for (const k of Object.keys(d)) {
+      if (!(k in p)) p[k] = clone(d[k]);
+      else if (isObj(d[k]) && isObj(p[k])) fillDefaults(p[k], d[k]);
+    }
+    if (Array.isArray(p.tangents) && DEFAULTS.tangents && DEFAULTS.tangents.length)
+      p.tangents.forEach((T, n) => fillDefaults(T, DEFAULTS.tangents[Math.min(n, DEFAULTS.tangents.length - 1)]));
+    return p;
+  }
   let P = clone(DEFAULTS), restored = false;
   try {
     const s = localStorage.getItem(STORE);
-    if (s) { P = JSON.parse(s); restored = true; }
-  } catch (e) { /* storage unavailable: start from the repo's params */ }
+    if (s) { P = fillDefaults(JSON.parse(s), DEFAULTS); restored = true; }
+  } catch (e) { P = clone(DEFAULTS); restored = false; /* storage unavailable or unreadable: start from the repo's params */ }
 
   const getp = (o, path) => path.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
   const setp = (o, path, v) => {
@@ -45,13 +57,20 @@
         if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error("Shader error: " + gl.getShaderInfoLog(s));
         return s;
       };
-      const prog = gl.createProgram();
-      gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"));
-      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
-      gl.bindAttribLocation(prog, 0, "in_pos");
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Shader link error: " + gl.getProgramInfoLog(prog));
+      const link = (fsrc) => {
+        const prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fsrc));
+        gl.bindAttribLocation(prog, 0, "in_pos");
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Shader link error: " + gl.getProgramInfoLog(prog));
+        return prog;
+      };
+      const prog = link(FRAG);
       this.prog = prog;
+      // depth of field needs a float render target; without one the picture is tonemapped in one pass, unblurred
+      this.floatOK = !!gl.getExtension("EXT_color_buffer_float");
+      if (this.floatOK) { this.post = link(POST); this.ploc = {}; this.hdr = gl.createTexture(); this.fbo = gl.createFramebuffer(); this.hdrSize = [0, 0]; }
       gl.useProgram(prog);
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -78,6 +97,10 @@
       if (!(name in this.loc)) this.loc[name] = this.gl.getUniformLocation(this.prog, name);
       return this.loc[name];
     }
+    PL(name) {
+      if (!(name in this.ploc)) this.ploc[name] = this.gl.getUniformLocation(this.post, name);
+      return this.ploc[name];
+    }
     upload(TL) {
       const gl = this.gl, N = TL.G.N;
       const arrays = [TL.G.tex, ...TL.paintTex];
@@ -94,6 +117,7 @@
       const gl = this.gl, c = this.canvas;
       const w = opt.proj === 1 ? opt.res * 2 : opt.res, h = opt.res;
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      gl.useProgram(this.prog);
       gl.viewport(0, 0, w, h);
       const f = (n, v) => { const l = this.L(n); if (l) gl.uniform1f(l, v); };
       const i = (n, v) => { const l = this.L(n); if (l) gl.uniform1i(l, v); };
@@ -171,6 +195,37 @@
         if (fslot < 8) { flash[fslot] = [...m.pts[m.pts.length - 1], ME.head_glow * m.inten[m.inten.length - 1] / Math.max(ME.intensity, 1e-6)]; flashcol[fslot] = [...ME.color, ME.head_size]; fslot++; }
       }
       i("uNumRib", slot); v4v("uRib", rib); v4v("uRibCol", ribcol); v4v("uFlash", flash); v4v("uFlashCol", flashcol);
+      // depth of field: a bubble of focus around the newest coloured blob
+      const D = P.dof || {}, [fpos, fstr] = TL.dof(t);
+      v3("uFocusPos", fpos); v2("uFocusR", [D.focus_radius ?? 6, (D.focus_radius ?? 6) + Math.max(D.falloff ?? 16, 1e-3)]);
+      if (!this.floatOK) { i("uDirect", 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); return; }
+      i("uDirect", 0);
+      gl.activeTexture(gl.TEXTURE10);
+      gl.bindTexture(gl.TEXTURE_2D, this.hdr);
+      if (this.hdrSize[0] !== w || this.hdrSize[1] !== h) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.hdr, 0);
+        this.hdrSize = [w, h];
+      }
+      gl.bindTexture(gl.TEXTURE_2D, null);                 // not bound while it's being drawn into
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const pxPerDeg = h / (opt.proj === 1 ? 180 : o.fov_deg);
+      const cocMax = (D.max_deg ?? 0) * fstr * pxPerDeg;
+      gl.bindTexture(gl.TEXTURE_2D, this.hdr);
+      if (cocMax > 0) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); }
+      else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.useProgram(this.post);
+      const pf = (n, v) => { const l = this.PL(n); if (l) gl.uniform1f(l, v); };
+      const pi = (n, v) => { const l = this.PL(n); if (l) gl.uniform1i(l, v); };
+      pi("uSrc", 10); const lr = this.PL("uRes"); if (lr) gl.uniform2f(lr, w, h);
+      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pf("uDim", (D.dim ?? 0) * fstr); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
+      pf("uExposure", look.exposure); pf("uMaster", TL.master(t)); pf("uSeed", P.seed);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
@@ -579,6 +634,20 @@
           help: "Straight lines: two keys close together make a hard cut to black." }),
         keys("show.audio_keys", "Sound level", { tmax: 300, vmin: 0, vmax: 1, linear: true,
           help: "For score.py (the held breath before the supernova). Not heard here." })),
+      group("Depth of field", "keep your eye on the shiny thing",
+        h("p", { class: "help" }, "Focus travels with the newest coloured blob through the lattice in 3D. Everything near it is sharp; further away it goes gently out of focus. A lattice cell is 2 units."),
+        range("dof.focus_radius", "In-focus radius", { min: 0, max: 40, step: 0.5,
+          help: "Every strut within this distance of the blob stays pin-sharp." }),
+        range("dof.falloff", "Fade to soft over", { min: 1, max: 80, step: 0.5,
+          help: "Beyond the radius, softness creeps in gently over this much more distance. Small = a quick drop-off, large = a long, gradual one." }),
+        h("h4", {}, "Fine-tuning"),
+        range("dof.max_deg", "How soft is soft", { min: 0, max: 2, step: 0.05, unit: "°",
+          help: "Blur at the far end of the fade, in degrees of the dome. 0.3–0.6 is subtle; 0 turns blur off." }),
+        range("dof.dim", "Dim what's out of focus", { min: 0, max: 0.8, step: 0.01,
+          help: "Out-of-focus struts also get a little darker, steering the eye without more blur." }),
+        range("dof.rack_s", "Focus moves to a new blob in", { min: 0.05, max: 4, step: 0.05, unit: "s" }),
+        keys("dof.strength_keys", "On / off over the show", { tmax: 300, vmin: 0, vmax: 1, linear: true,
+          help: "1 = on, 0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." })),
       group("Supernova", "the reward",
         range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
           help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),
@@ -777,7 +846,14 @@
 
   // ---------------------------------------------------------------- boot
   function boot() {
-    buildPanel();
+    try { buildPanel(); }
+    catch (e) {
+      // never leave the page stuck on "Starting…": fall back to the repo's settings
+      P = clone(DEFAULTS); restored = false;
+      try { localStorage.removeItem(STORE); } catch (e2) { /* ignore */ }
+      buildPanel();
+      showError("Your saved settings couldn't be loaded, so this is the repo's version. (" + e.message + ")");
+    }
     if (restored && JSON.stringify(P) !== JSON.stringify(DEFAULTS)) {
       $("#restored").hidden = false;
     }

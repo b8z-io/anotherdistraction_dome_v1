@@ -36,6 +36,7 @@ for X in T.tangents:
     })
 times = [0.5, 30.0, 151.3, 158.0, 219.7, 221.7, 222.4, 230.0, 247.2, 270.5, 274.9, 284.1]
 out["show"] = [[t, T.star(t), T.master(t), T.lattice_level(t), T.focus(t), list(T.shell(t)), list(T.quote(t))] for t in times]
+out["dof"] = [[t, T.dof(t)[0].tolist(), T.dof(t)[1]] for t in (40.0, 52.0, 57.3, 63.0, 76.2, 76.5, 150.0, 190.1, 200.0, 216.0)]
 M = P.get("meteor")
 out["meteor"] = [[t, T.meteor(t)[0].tolist(), T.meteor(t)[1].tolist()] for t in (M["t"] + 0.3, M["t"] + 1.1)] if M else []
 json.dump(out, sys.stdout)

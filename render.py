@@ -9,7 +9,10 @@ Examples
   python render.py --range 0 45 --res 1024 --out frames/seed       # sequence
   python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k  # final-ish
   python render.py --times 30 --proj equirect --res 2048           # VR preview
+  python render.py --range 176 289 --proj reel --res 1280 --out frames/reel   # 9:16 phone cut (720x1280)
   python render.py --range 0 45 --res 512 --out frames/seed --movie   # frames + seed.mp4
+  python render.py --range 0 289 --res 4096 --ss 2 --fps 60 --audio score/mix_stereo.wav \
+                   --stream another_distraction_4k60.mp4                # 4K60 HEVC, no PNGs
 """
 import argparse, json, math, os, sys, time
 from pathlib import Path
@@ -28,13 +31,22 @@ def mat(m):
     return tuple(np.asarray(m, float).T.flatten())
 
 
+def o_fov(P):
+    return P["output"]["fov_deg"]
+
+
 class Renderer:
     def __init__(self, P, res, proj, ss, params_path):
         self.P = P
         self.TL = tl.load(str(Path(params_path).resolve()))
         G = self.TL.G
-        self.w = res * 2 if proj == "equirect" else res
+        self.proj = proj
+        reel = P.get("reel", {})
+        self.w = res * 2 if proj == "equirect" else (int(round(res * 9 / 16 / 2)) * 2 if proj == "reel" else res)
         self.h = res
+        # the angle one output pixel covers vertically (sets the text mip level)
+        self.vfov = reel.get("vfov_deg", 120) if proj == "reel" else o_fov(P)
+        self.text_scale = reel.get("text_scale", 1.0) if proj == "reel" else 1.0
         self.ss = ss
         # Linux servers: headless EGL. Mac (CGL) / Windows (WGL): the default context.
         if sys.platform.startswith("linux"):
@@ -45,9 +57,17 @@ class Renderer:
         vert = """#version 330
         in vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"""
         self.prog = self.ctx.program(vertex_shader=vert, fragment_shader=frag)
-        quad = np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4")
-        self.vao = self.ctx.vertex_array(self.prog, [(self.ctx.buffer(quad), "2f", "in_pos")])
+        self.post = self.ctx.program(vertex_shader=vert, fragment_shader=(ROOT / "shaders" / "post.frag").read_text())
+        quad = self.ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4"))
+        self.vao = self.ctx.vertex_array(self.prog, [(quad, "2f", "in_pos")])
+        self.vao_post = self.ctx.vertex_array(self.post, [(quad, "2f", "in_pos")])
+        # pass 1 -> linear HDR colour + depth (float, mipmapped for the blur); pass 2 -> 8-bit picture
+        self.hdr = self.ctx.texture((self.w, self.h), 4, dtype="f4")
+        self.hdr.repeat_x = self.hdr.repeat_y = False
+        self.fbo_hdr = self.ctx.framebuffer(color_attachments=[self.hdr])
         self.fbo = self.ctx.simple_framebuffer((self.w, self.h), components=4)
+        # blur sizes are given in degrees of the dome: convert to output pixels
+        self.px_per_deg = self.h / (180.0 if proj == "equirect" else self.vfov)
 
         n = G["N"]
         def tex3d(arr, unit):
@@ -75,8 +95,9 @@ class Renderer:
         sh = P.get("show", {})
         static = {
             "uRes": (self.w, self.h),
-            "uProj": 1 if proj == "equirect" else 0,
-            "uFov": o["fov_deg"], "uTilt": o["tilt_deg"], "uSS": ss,
+            "uProj": {"equirect": 1, "reel": 2}.get(proj, 0),
+            "uFov": reel.get("vfov_deg", 120) if proj == "reel" else o["fov_deg"],
+            "uTilt": reel.get("pitch_deg", 52) if proj == "reel" else o["tilt_deg"], "uSS": ss,
             "uSeed": float(P["seed"]),
             "uVoidIn": C["void_inner"], "uVoidOut": C["void_outer"],
             "uLatRot": mat(G["rot"]),
@@ -114,11 +135,11 @@ class Renderer:
         Q = P.get("quote")
         card, ca, cr = TL.quote(t)
         if Q and card >= 0:
-            rad = math.radians(Q["deg_per_px"])
+            rad = math.radians(Q["deg_per_px"] * self.text_scale)
             rect, crect = self.qmeta["cards"][card], self.qmeta["credit"]
             az, el = Q["dir"]
-            drop = math.degrees((rect[3] / 2 + crect[3] / 2) * rad) + Q["credit_gap_deg"]
-            screen = math.radians(P["output"]["fov_deg"]) / self.h / max(self.ss, 1)
+            drop = math.degrees((rect[3] / 2 + crect[3] / 2) * rad) + Q["credit_gap_deg"] * self.text_scale
+            screen = math.radians(self.vfov) / self.h / max(self.ss, 1)
             u.update({"uTextRect": tuple(rect), "uCreditRect": tuple(crect),
                       "uTextDir": tuple(tl.dir_from(az, el)), "uCreditDir": tuple(tl.dir_from(az, el - drop)),
                       "uTextAlpha": (ca, cr), "uTextRad": rad, "uTextLod": max(0.0, math.log2(screen / rad)),
@@ -163,11 +184,33 @@ class Renderer:
         return u
 
     def frame(self, t):
-        for k, v in self.uniforms(t).items():
+        u = self.uniforms(t)
+        D = self.P.get("dof", {})
+        fpos, strength = self.TL.dof(t)
+        u["uFocusPos"] = tuple(float(x) for x in fpos)
+        r0 = D.get("focus_radius", 6.0)
+        u["uFocusR"] = (r0, r0 + max(D.get("falloff", 16.0), 1e-3))      # sharp inside, fully soft beyond
+        u["uDirect"] = 0
+        for k, v in u.items():
             if k in self.prog:
                 self.prog[k].value = v
-        self.fbo.use()
+        self.fbo_hdr.use()
         self.vao.render(moderngl.TRIANGLE_STRIP)
+        coc_max = D.get("max_deg", 0.0) * strength * self.px_per_deg
+        if coc_max > 0:                       # mip levels let wide blurs gather smoothly with few taps
+            self.hdr.build_mipmaps()
+            self.hdr.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+        else:                                 # (a mipmap filter without fresh levels reads as black)
+            self.hdr.filter = (moderngl.LINEAR, moderngl.LINEAR)
+        self.hdr.use(10)
+        post = {"uSrc": 10, "uRes": (self.w, self.h), "uCocMax": coc_max, "uTaps": int(D.get("taps", 64)), "uDim": D.get("dim", 0.0) * strength,
+                "uMaskCircle": 1 if self.proj == "domemaster" else 0,
+                "uExposure": self.P["look"]["exposure"], "uMaster": u["uMaster"], "uSeed": float(self.P["seed"])}
+        for k, v in post.items():
+            if k in self.post:
+                self.post[k].value = v
+        self.fbo.use()
+        self.vao_post.render(moderngl.TRIANGLE_STRIP)
         data = self.fbo.read(components=3)
         return Image.frombytes("RGB", (self.w, self.h), data).transpose(Image.FLIP_TOP_BOTTOM)
 
@@ -190,6 +233,31 @@ def contact_sheet(images, labels, out, cols=4):
     sheet.save(out)
 
 
+def stream_movie(r, times, out, fps, codec, audio):
+    """Render straight into ffmpeg's stdin: nothing touches the disk but the movie."""
+    import subprocess
+    from movie import ffmpeg_exe, CODECS
+    ext, args = CODECS[codec]
+    cmd = [ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+           "-s", f"{r.w}x{r.h}", "-framerate", str(fps), "-i", "-"]
+    if audio:
+        cmd += ["-ss", f"{times[0]:.6f}", "-i", str(audio), "-map", "0:v", "-map", "1:a", "-shortest"]
+        cmd += ["-c:a", "pcm_s24le"] if codec == "prores" else ["-c:a", "aac", "-b:a", "320k"]
+    if ext == ".mp4":
+        args = args + ["-movflags", "+faststart"]
+    ff = subprocess.Popen(cmd + args + [str(out)], stdin=subprocess.PIPE)
+    t0 = time.time()
+    for i, t in enumerate(times):
+        ff.stdin.write(r.frame(t).tobytes())
+        done = i + 1
+        eta = (time.time() - t0) / done * (len(times) - done)
+        print(f"t={t:7.2f}s  frame {done}/{len(times)}  {time.time() - t0:7.0f}s elapsed  ~{eta / 60:5.0f} min left", flush=True)
+    ff.stdin.close()
+    if ff.wait():
+        sys.exit("ffmpeg failed")
+    print(f"{out}  ({len(times)} frames at {fps:g}fps, {codec})")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", default=str(ROOT / "params.json"))
@@ -197,16 +265,25 @@ def main():
     ap.add_argument("--range", type=float, nargs=2, metavar=("START", "END"))
     ap.add_argument("--res", type=int)
     ap.add_argument("--ss", type=int)
-    ap.add_argument("--proj", choices=["domemaster", "equirect"])
+    ap.add_argument("--proj", choices=["domemaster", "equirect", "reel"],
+                    help="reel = 9:16 phone view looking up at the dome (--res sets the height)")
     ap.add_argument("--out", default="frames")
     ap.add_argument("--sheet")
     ap.add_argument("--cols", type=int, default=4)
     ap.add_argument("--movie", nargs="?", const="h264", choices=["h264", "hevc", "prores"],
                     help="after a --range render, stitch the frames into a movie (default h264)")
-    ap.add_argument("--audio", help="with --movie: soundtrack to lay in (e.g. score/mix_stereo.wav)")
+    ap.add_argument("--audio", help="with --movie/--stream: soundtrack to lay in (e.g. score/mix_stereo.wav)")
+    ap.add_argument("--fps", type=float, help="override output.fps (e.g. 60)")
+    ap.add_argument("--resume", action="store_true",
+                    help="with --range: skip frames already in --out, so an interrupted render picks up where it stopped")
+    ap.add_argument("--stream", metavar="MOVIE",
+                    help="with --range: pipe frames straight into this movie file, no PNGs on disk "
+                         "(codec from --movie, default hevc). For 4K+: a PNG per frame is ~15 MB.")
     a = ap.parse_args()
 
     P = json.loads(Path(a.params).read_text())
+    if a.fps:
+        P["output"]["fps"] = a.fps
     res = a.res or P["output"]["preview_res"]
     ss = a.ss or P["output"]["supersample"]
     proj = a.proj or P["output"]["projection"]
@@ -218,6 +295,16 @@ def main():
     else:
         times = a.times or [0.0]
 
+    if a.stream:
+        stream_movie(r, times, a.stream, P["output"]["fps"], a.movie or "hevc", a.audio)
+        return
+
+    if a.resume and not a.sheet:
+        fps_ = P["output"]["fps"]
+        todo = [t for t in times if not (Path(a.out) / f"frame_{int(round(t * fps_)):05d}.png").exists()]
+        print(f"resume: {len(times) - len(todo)} frames already done, {len(todo)} to go", flush=True)
+        times = todo
+
     imgs = []
     os.makedirs(a.out, exist_ok=True)
     t0 = time.time()
@@ -227,7 +314,9 @@ def main():
             imgs.append(im)
         else:
             frame_no = int(round(t * P["output"]["fps"]))
-            im.save(Path(a.out) / f"frame_{frame_no:05d}.png")
+            dst = Path(a.out) / f"frame_{frame_no:05d}.png"
+            im.save(dst.with_suffix(".tmp.png"))
+            os.replace(dst.with_suffix(".tmp.png"), dst)       # never leave a half-written frame behind
         print(f"t={t:6.2f}s  {time.time() - t0:6.1f}s elapsed", flush=True)
     if a.sheet:
         contact_sheet(imgs, [f"{t:.1f}s" for t in times], a.sheet, a.cols)
