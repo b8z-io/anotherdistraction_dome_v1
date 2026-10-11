@@ -46,23 +46,39 @@
         1
       ],
       [
-        294,
+        218,
         1
       ],
       [
-        301,
-        1.8
+        221.5,
+        3.0
       ],
       [
-        303.5,
-        1.8
+        222,
+        8
       ],
       [
-        309,
+        223,
+        2.0
+      ],
+      [
+        228,
+        0.7
+      ],
+      [
+        268,
+        0.5
+      ],
+      [
+        276,
+        0.3
+      ],
+      [
+        280,
         0
       ],
       [
-        315,
+        400,
         0
       ]
     ]
@@ -106,32 +122,24 @@
         118
       ],
       [
-        221.9,
+        218,
         140
       ],
       [
-        222.05,
+        221.5,
         0
       ],
       [
-        226,
+        222,
         0
       ],
       [
-        250,
-        30
+        224.8,
+        150
       ],
       [
-        280,
-        72
-      ],
-      [
-        287,
-        74
-      ],
-      [
-        303,
-        0
+        400,
+        150
       ]
     ]
   },
@@ -193,18 +201,18 @@
       ],
       [
         178,
-        9
+        8
       ],
       [
-        221.9,
-        9.5
+        214,
+        2.5
       ],
       [
-        222.05,
+        222,
         0
       ],
       [
-        315,
+        400,
         0
       ]
     ],
@@ -230,24 +238,16 @@
         70
       ],
       [
-        221.9,
-        82
-      ],
-      [
-        222.05,
-        0
-      ],
-      [
-        226,
-        0
+        222,
+        85
       ],
       [
         300,
-        -20
+        95
       ],
       [
-        315,
-        -20
+        400,
+        95
       ]
     ],
     "void_inner": 1.2,
@@ -1190,7 +1190,7 @@
       "level": 0.12
     },
     "pad_decay_s": 25.0,
-    "regrow_chime_level": 0.1,
+    "regrow_chime_level": 0.06,
     "pulse": {
       "start": 152,
       "end": 181,
@@ -1207,22 +1207,35 @@
     },
     "riser": {
       "start": 196,
-      "end": 222,
+      "end": 218,
       "level": 0.1
     },
-    "resolve": {
-      "at": 286,
+    "inhale": {
+      "start": 218,
+      "end": 221.4,
+      "level": 0.2
+    },
+    "nova": {
       "chord": [
         "D2",
         "A2",
         "D3",
-        "F#3",
         "A3",
-        "E4",
-        "F#4"
+        "D4",
+        "F#4",
+        "A4",
+        "E5",
+        "F#5",
+        "A5",
+        "D6"
       ],
-      "level": 0.22,
-      "decay_s": 9.0
+      "level": 0.3,
+      "decay_s": 16.0,
+      "boom_level": 0.35
+    },
+    "voice": {
+      "level": 0.9,
+      "reverb_send": 0.2
     }
   },
   "paint": {
@@ -1237,33 +1250,76 @@
     "vivid": 1.15
   },
   "show": {
-    "_note": "master_keys: overall picture + sound level (straight lines; two keys close together = a hard cut). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
-    "end_s": 315.0,
-    "reset_s": 222.0,
+    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound. lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
+    "end_s": 289.0,
     "master_keys": [
       [
         0,
         1
       ],
       [
-        221.95,
+        400,
         1
+      ]
+    ],
+    "audio_keys": [
+      [
+        0,
+        1
+      ],
+      [
+        221.4,
+        1
+      ],
+      [
+        221.5,
+        0
+      ],
+      [
+        221.98,
+        0
       ],
       [
         222.0,
-        0
-      ],
-      [
-        225.0,
-        0
-      ],
-      [
-        225.8,
         1
       ],
       [
-        315,
+        400,
         1
+      ]
+    ],
+    "lattice_keys": [
+      [
+        0,
+        1
+      ],
+      [
+        222,
+        1
+      ],
+      [
+        227,
+        0.9
+      ],
+      [
+        234,
+        0.42
+      ],
+      [
+        268,
+        0.34
+      ],
+      [
+        271,
+        0.3
+      ],
+      [
+        279,
+        0
+      ],
+      [
+        400,
+        0
       ]
     ],
     "focus_keys": [
@@ -1311,13 +1367,133 @@
         "Overload"
       ],
       [
-        222,
-        "Rebuild"
+        218,
+        "Supernova"
       ],
       [
-        286,
-        "Home"
+        228,
+        "Credo"
+      ],
+      [
+        283,
+        "Meteor"
       ]
     ]
+  },
+  "quote": {
+    "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
+    "font_weight": 500,
+    "dir": [
+      0,
+      34
+    ],
+    "deg_per_px": 0.04,
+    "fade_s": 0.8,
+    "level": 1.25,
+    "color": [
+      1.0,
+      0.95,
+      0.86
+    ],
+    "halo": 0.8,
+    "cards": [
+      {
+        "rows": [
+          "I would rather be ashes than dust!"
+        ],
+        "in": 228.0,
+        "voice": "assets/voice/line1.wav",
+        "voice_at": 228.7,
+        "out": 232.9
+      },
+      {
+        "rows": [
+          "I would rather that my spark should burn out",
+          "in a brilliant blaze",
+          "than it should be stifled by dry-rot."
+        ],
+        "in": 233.5,
+        "voice": "assets/voice/line2.wav",
+        "voice_at": 234.2,
+        "out": 242.7
+      },
+      {
+        "rows": [
+          "I would rather be a superb meteor,",
+          "every atom of me in magnificent glow,",
+          "than a sleepy and permanent planet."
+        ],
+        "in": 243.3,
+        "voice": "assets/voice/line3.wav",
+        "voice_at": 244.0,
+        "out": 253.96
+      },
+      {
+        "rows": [
+          "The function of man is to live,",
+          "not to exist."
+        ],
+        "in": 254.56,
+        "voice": "assets/voice/line4.wav",
+        "voice_at": 255.26,
+        "out": 260.48
+      },
+      {
+        "rows": [
+          "I shall not waste my days",
+          "trying to prolong them."
+        ],
+        "in": 261.08,
+        "voice": "assets/voice/line5.wav",
+        "voice_at": 261.78,
+        "out": 266.32
+      },
+      {
+        "rows": [
+          "I shall use my time."
+        ],
+        "in": 266.92,
+        "voice": "assets/voice/line6.wav",
+        "voice_at": 267.62,
+        "out": 275.5
+      }
+    ],
+    "credit": "\u2014 Jack London",
+    "credit_in": 269.0,
+    "credit_gap_deg": 4.0
+  },
+  "nova": {
+    "_note": "the supernova: everything is pulled into the star (growth front -> 0), a held breath, then the star bursts and the lattice regrows in one wave carrying every colour.",
+    "t": 222.0,
+    "shell_speed": 9.0,
+    "shell_width": 0.5,
+    "intensity": 4.0,
+    "decay_s": 2.2,
+    "hue_per_path": 0.035
+  },
+  "meteor": {
+    "t": 283.5,
+    "dur": 1.7,
+    "from_dir": [
+      -75,
+      42
+    ],
+    "to_dir": [
+      70,
+      20
+    ],
+    "dist": 30.0,
+    "color": [
+      1.0,
+      0.86,
+      0.6
+    ],
+    "width": 0.07,
+    "trail": 0.3,
+    "intensity": 7.0,
+    "head_glow": 6.0,
+    "head_size": 0.3,
+    "note": "A6",
+    "level": 0.18
   }
 }

@@ -59,7 +59,24 @@ uniform float uHueJitter;   // node-to-node hue variation (radians)
 uniform float uVivid;       // brightness of painted struts relative to the base
 
 // ---- the show
-uniform float uMaster;      // overall picture level: 0 = black (the cut, the end)
+uniform float uMaster;      // overall picture level: 0 = black
+uniform float uLatLevel;    // brightness of the lattice alone (the afterglow fading)
+uniform float uNovaT;       // the supernova: from this time the lattice wears every colour
+uniform float uNovaHue;     // ...hue turns this many radians per path unit out from the star
+uniform vec4  uShell;       // its shock shell: radius, width, brightness (0 = none)
+
+// ---- the credo, in light (camera frame; texture: R glyphs, G halo)
+uniform sampler2D uText;
+uniform vec2  uTextSize;    // texture size, px
+uniform vec4  uTextRect;    // current card: x, y, w, h in px
+uniform vec4  uCreditRect;
+uniform vec3  uTextDir;     // card centre direction
+uniform vec3  uCreditDir;
+uniform vec2  uTextAlpha;   // card, credit opacity
+uniform float uTextRad;     // radians per texture px
+uniform float uTextLod;     // mip level to sample at
+uniform vec3  uTextCol;
+uniform float uTextHalo;
 uniform float uFocus;       // hyperfocus: 0..1 dims everything but one tangent's colour
 uniform int   uFocusIdx;    // ...this one
 
@@ -136,7 +153,14 @@ vec4 spreadAt(vec3 id, out vec3 emis) {
     emis = vec3(0.0);
     vec4 acc = vec4(0.0);
     ivec3 g = gridOf(id);
-    if (uNumT == 0 || !inGrid(g)) return acc;
+    if (!inGrid(g)) return acc;
+    if (uTime >= uNovaT) {                       // after the supernova: every colour at once
+        float dn = texelFetch(uGraph, g, 0).r;
+        vec3 w = transpose(uLatRot) * (id * uCell) - uSeedPos;
+        float ang = dn * uNovaHue + atan(w.x, w.z) + (hash31(id * 2.11) - 0.5) * uHueJitter;
+        acc = vec4(hueRot(vec3(1.0, 0.22, 0.08), ang), 1.0);
+    }
+    if (uNumT == 0) return acc;
     for (int t = 0; t < 8; t++) {
         if (2 * t >= uNumT) break;
         if (uTime < uSpCol[2 * t].a && (2 * t + 1 >= uNumT || uTime < uSpCol[2 * t + 1].a)) continue;  // nothing launched yet
@@ -287,6 +311,42 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
     return col;
 }
 
+// the supernova's shock shell: a thin sphere of light around the star, brightest edge-on
+vec3 shell(vec3 ro, vec3 rd) {
+    float R = uShell.x, w = uShell.y;
+    vec3 oc = ro - uSeedPos;
+    float b = dot(oc, rd), c = dot(oc, oc) - R * R, h = b * b - c;
+    vec3 col = vec3(0.0);
+    float dl = sqrt(max(dot(oc, oc) - b * b, 0.0));                 // ray's closest approach to the star
+    if (b < 0.0 || c < 0.0) {
+        vec3 n0 = normalize(ro + rd * max(-b, 0.0) - uSeedPos);
+        col += hueRot(vec3(1.0, 0.3, 0.1), atan(n0.x, n0.z) + n0.y * 2.0) * exp(-pow((dl - R) / w, 2.0)) * 0.6;
+    }
+    if (h > 0.0) {
+        float sh = sqrt(h);
+        for (int k = 0; k < 2; k++) {
+            float t = -b + (k == 0 ? -sh : sh);
+            if (t <= 0.0) continue;
+            vec3 n = normalize(ro + rd * t - uSeedPos);
+            float edge = min(w / max(abs(dot(n, rd)), 0.06), 8.0 * w) / w;   // limb-brightened
+            col += hueRot(vec3(1.0, 0.3, 0.1), atan(n.x, n.z) + n.y * 2.0) * edge * 0.25;
+        }
+    }
+    return col * uShell.z;
+}
+
+// one card of text on the dome: gnomonic projection around its centre direction
+vec2 textAt(vec3 d, vec3 c, vec4 rect) {
+    float dc = dot(d, c);
+    if (dc <= 0.2) return vec2(0.0);
+    vec3 r = normalize(cross(c, vec3(0.0, 1.0, 0.0)));
+    vec3 u = cross(r, c);
+    vec2 px = vec2(atan(dot(d, r) / dc), atan(dot(d, u) / dc)) / uTextRad;   // texture px from the centre
+    vec2 a = vec2(rect.x + rect.z * 0.5 + px.x, rect.y + rect.w * 0.5 - px.y);
+    if (a.x < rect.x || a.x > rect.x + rect.z || a.y < rect.y || a.y > rect.y + rect.w) return vec2(0.0);
+    return textureLod(uText, a / uTextSize, uTextLod).rg;
+}
+
 vec3 shade(vec3 rdCam) {
     vec3 rd = uCamRot * rdCam;            // world-space ray
     vec3 col = vec3(0.0);
@@ -336,11 +396,17 @@ vec3 shade(vec3 rdCam) {
             t += max(min(d * 0.9, tExit), 0.0015);
             if (t > uFar || length(p) > uExtent + uCell) break;
         }
-        col += hitCol;
-        col += glow * uGlow * 0.02;
-        col += uColTip * tipg * uTipGlow * 0.02;
+        col += (hitCol + glow * uGlow * 0.02 + uColTip * tipg * uTipGlow * 0.02) * uLatLevel;
     }
     col += ribbons(uCamPos, rd, tHit);
+    if (uShell.z > 0.0) col += shell(uCamPos, rd);
+    // the credo: a soft dark halo behind the words, then the words in light
+    if (uTextAlpha.x + uTextAlpha.y > 0.0) {
+        vec2 a = textAt(rdCam, uTextDir, uTextRect) * uTextAlpha.x;
+        vec2 b = textAt(rdCam, uCreditDir, uCreditRect) * uTextAlpha.y;
+        float glyph = max(a.x, b.x), halo = max(a.y, b.y);
+        col = col * (1.0 - uTextHalo * halo) + uTextCol * glyph;
+    }
     return col;
 }
 
