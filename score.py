@@ -392,7 +392,8 @@ def main():
             u = np.linspace(0, 1, i1 - i0)
             swell = sum(additive(hz(x), i1 - i0, seed=[P["seed"], 81, k], tilt=1.2) for k, x in enumerate(Nv["chord"][2:9]))
             air = bandpass_noise(i1 - i0, 4000 * 0.15 ** u, 0.8, seed=[P["seed"], 83])
-            M.add((swell * 0.6 + air * 0.5) * I["level"] * u ** 3, i0, [0, 1, 0], "nova", width=0.7)
+            land = 1 - smoothstep((u - 0.994) / 0.006)          # lands on the burst: ~25 ms tail, masked by the hit
+            M.add((swell * 0.6 + air * 0.5) * I["level"] * u ** 3 * land, i0, [0, 1, 0], "nova", width=0.7)
         # the burst: one huge chord, a boom, and every regrowing node chiming
         nb = int(Nv["decay_s"] * 2.5 * SR)
         tb = np.arange(nb) / SR

@@ -1212,7 +1212,7 @@
     },
     "inhale": {
       "start": 218,
-      "end": 221.4,
+      "end": 222.0,
       "level": 0.2
     },
     "nova": {
@@ -1251,7 +1251,7 @@
     "vivid": 1.15
   },
   "show": {
-    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound. lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
+    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound (flat now: the swell runs straight into the supernova). lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
     "end_s": 289.0,
     "master_keys": [
       [
@@ -1266,22 +1266,6 @@
     "audio_keys": [
       [
         0,
-        1
-      ],
-      [
-        221.4,
-        1
-      ],
-      [
-        221.5,
-        0
-      ],
-      [
-        221.98,
-        0
-      ],
-      [
-        222.0,
         1
       ],
       [
