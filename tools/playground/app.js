@@ -8,16 +8,27 @@
   const DEFAULTS = JSON.parse($("#params-default").textContent);
   const FRAG = $("#frag-src").textContent;
   const QMETA = JSON.parse($("#quote-meta").textContent);
-  const STORE = "anotherdistraction.playground.params.v1";
+  const STORE = "anotherdistraction.playground.params.v2";
   const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
   const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
   // ---------------------------------------------------------------- state
+  // a saved draft from an older version may be missing newer settings: fill them from the defaults
+  const isObj = (x) => x && typeof x === "object" && !Array.isArray(x);
+  function fillDefaults(p, d) {
+    for (const k of Object.keys(d)) {
+      if (!(k in p)) p[k] = clone(d[k]);
+      else if (isObj(d[k]) && isObj(p[k])) fillDefaults(p[k], d[k]);
+    }
+    if (Array.isArray(p.tangents) && DEFAULTS.tangents && DEFAULTS.tangents.length)
+      p.tangents.forEach((T, n) => fillDefaults(T, DEFAULTS.tangents[Math.min(n, DEFAULTS.tangents.length - 1)]));
+    return p;
+  }
   let P = clone(DEFAULTS), restored = false;
   try {
     const s = localStorage.getItem(STORE);
-    if (s) { P = JSON.parse(s); restored = true; }
-  } catch (e) { /* storage unavailable: start from the repo's params */ }
+    if (s) { P = fillDefaults(JSON.parse(s), DEFAULTS); restored = true; }
+  } catch (e) { P = clone(DEFAULTS); restored = false; /* storage unavailable or unreadable: start from the repo's params */ }
 
   const getp = (o, path) => path.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
   const setp = (o, path, v) => {
@@ -777,7 +788,14 @@
 
   // ---------------------------------------------------------------- boot
   function boot() {
-    buildPanel();
+    try { buildPanel(); }
+    catch (e) {
+      // never leave the page stuck on "Starting…": fall back to the repo's settings
+      P = clone(DEFAULTS); restored = false;
+      try { localStorage.removeItem(STORE); } catch (e2) { /* ignore */ }
+      buildPanel();
+      showError("Your saved settings couldn't be loaded, so this is the repo's version. (" + e.message + ")");
+    }
     if (restored && JSON.stringify(P) !== JSON.stringify(DEFAULTS)) {
       $("#restored").hidden = false;
     }
