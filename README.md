@@ -285,9 +285,10 @@ holds its first/last value outside the range.
 * The lens locks on to the newest coloured blob: its head while it flies, then the node it landed on while its colour spreads. When the next one launches, focus glides to it over `rack_s` (frantic in the overload).
 * `focus_radius` — everything within this distance of the blob, in 3D, stays sharp (world units; a lattice cell is 2).
 * `falloff` — beyond that radius, focus fades gently over this much further distance until fully soft. Small = a crisp edge to the bubble, large = a slow drop-off.
-* `max_deg` — the softest blur, in degrees of the dome (so the look is the same at 512 or 8K).
+* `max_deg` — blur at the far end of the fade, in degrees of the dome (so the look is the same at 512 or 8K). 0.3–0.6 is subtle. The blur is eased in (a whisper just outside the radius, building further out) and Gaussian, so thin struts soften rather than double up.
+* `dim` — out-of-focus parts also darken by up to this much (0–1), steering the eye without more blur.
 * `strength_keys` — 0–1 over the show. Off until the first comet, and from the supernova on so the credo stays crisp.
-* `taps` — blur samples per pixel (64 is clean; the playground lets you drop it while playing).
+* `taps` — blur samples per pixel (64; never fewer than 32).
 
 **`nova`** — the supernova. Pair it with `growth.front_keys`: the front drops to 0 just before (the inhale, everything retracting into the star) and races back out after.
 * `t` — the burst. `shell_speed`, `shell_width`, `intensity`, `decay_s` — the rainbow shock ring sweeping out over the audience.

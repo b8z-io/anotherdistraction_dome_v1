@@ -203,7 +203,7 @@ class Renderer:
         else:                                 # (a mipmap filter without fresh levels reads as black)
             self.hdr.filter = (moderngl.LINEAR, moderngl.LINEAR)
         self.hdr.use(10)
-        post = {"uSrc": 10, "uRes": (self.w, self.h), "uCocMax": coc_max, "uTaps": int(D.get("taps", 64)),
+        post = {"uSrc": 10, "uRes": (self.w, self.h), "uCocMax": coc_max, "uTaps": int(D.get("taps", 64)), "uDim": D.get("dim", 0.0) * strength,
                 "uMaskCircle": 1 if self.proj == "domemaster" else 0,
                 "uExposure": self.P["look"]["exposure"], "uMaster": u["uMaster"], "uSeed": float(self.P["seed"])}
         for k, v in post.items():

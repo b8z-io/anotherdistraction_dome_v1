@@ -9,7 +9,7 @@
   const FRAG = $("#frag-src").textContent;
   const POST = $("#post-src").textContent;
   const QMETA = JSON.parse($("#quote-meta").textContent);
-  const STORE = "anotherdistraction.playground.params.v3";
+  const STORE = "anotherdistraction.playground.params.v4";
   const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
   const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
@@ -224,7 +224,7 @@
       const pf = (n, v) => { const l = this.PL(n); if (l) gl.uniform1f(l, v); };
       const pi = (n, v) => { const l = this.PL(n); if (l) gl.uniform1i(l, v); };
       pi("uSrc", 10); const lr = this.PL("uRes"); if (lr) gl.uniform2f(lr, w, h);
-      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
+      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pf("uDim", (D.dim ?? 0) * fstr); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
       pf("uExposure", look.exposure); pf("uMaster", TL.master(t)); pf("uSeed", P.seed);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
@@ -638,15 +638,16 @@
         h("p", { class: "help" }, "Focus travels with the newest coloured blob through the lattice in 3D. Everything near it is sharp; further away it goes gently out of focus. A lattice cell is 2 units."),
         range("dof.focus_radius", "In-focus radius", { min: 0, max: 40, step: 0.5,
           help: "Every strut within this distance of the blob stays pin-sharp." }),
-        range("dof.falloff", "Fade to soft over", { min: 0.5, max: 60, step: 0.5,
-          help: "Beyond the radius, focus fades gently over this much more distance. Small = a hard edge, large = a slow, gentle drop-off." }),
+        range("dof.falloff", "Fade to soft over", { min: 1, max: 80, step: 0.5,
+          help: "Beyond the radius, softness creeps in gently over this much more distance. Small = a quick drop-off, large = a long, gradual one." }),
         h("h4", {}, "Fine-tuning"),
-        range("dof.max_deg", "How soft is soft", { min: 0, max: 4, step: 0.05, unit: "°",
-          help: "How blurry things are once fully out of focus (0 turns the effect off)." }),
+        range("dof.max_deg", "How soft is soft", { min: 0, max: 2, step: 0.05, unit: "°",
+          help: "Blur at the far end of the fade, in degrees of the dome. 0.3–0.6 is subtle; 0 turns blur off." }),
+        range("dof.dim", "Dim what's out of focus", { min: 0, max: 0.8, step: 0.01,
+          help: "Out-of-focus struts also get a little darker, steering the eye without more blur." }),
         range("dof.rack_s", "Focus moves to a new blob in", { min: 0.05, max: 4, step: 0.05, unit: "s" }),
         keys("dof.strength_keys", "On / off over the show", { tmax: 300, vmin: 0, vmax: 1, linear: true,
-          help: "1 = on, 0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." }),
-        range("dof.taps", "Blur quality", { min: 8, max: 128, step: 8, help: "Lower is faster while you play; renders use the saved value." })),
+          help: "1 = on, 0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." })),
       group("Supernova", "the reward",
         range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
           help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),

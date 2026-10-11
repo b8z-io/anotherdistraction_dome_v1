@@ -1598,10 +1598,10 @@ body.showhelp .help { display: block; }
     ]
   },
   "dof": {
-    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that it softens gently over the next `falloff` units until fully out of focus (max_deg of blur). Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
-    "focus_radius": 6.0,
-    "falloff": 16.0,
-    "max_deg": 1.0,
+    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that softness creeps in gently (eased) over the next `falloff` units, up to max_deg of blur, and out-of-focus parts dim by up to `dim`. Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
+    "focus_radius": 8.0,
+    "falloff": 30.0,
+    "max_deg": 0.6,
     "rack_s": 0.7,
     "taps": 64,
     "strength_keys": [
@@ -1629,7 +1629,8 @@ body.showhelp .help { display: block; }
         400,
         0
       ]
-    ]
+    ],
+    "dim": 0.2
   },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
@@ -2294,19 +2295,23 @@ precision highp float;
 precision highp int;
 precision highp sampler3D;
 // Another Distraction — second pass: depth of field, then tonemap.
-// Input (uSrc, mipmapped): linear HDR colour in rgb, blur amount in a (0 = in focus, 1 = softest,
-// from how far that point is from the focus bubble — see lattice.frag).
+// Input (uSrc, mipmapped): linear HDR colour in rgb, focus distance in a (0 = inside the focus
+// radius around the blob, 1 = at or beyond the end of the falloff — see lattice.frag).
 //
-// A pixel with blur b spreads into a disc b * uCocMax pixels across. Gathered with two
-// spiral tap sets: one sized to this pixel's own blur, one at the largest blur so soft
-// neighbours can spill their light over sharper pixels nearby.
+// That distance is eased (squared) into a blur amount, so things just outside the focus radius get
+// only a whisper of softness and the blur builds gently further out. A pixel with blur amount b is a
+// soft Gaussian b * uCocMax pixels across (no hard bokeh discs, which turn thin struts into doubled
+// lines). Gathered with two spirals, rotated per pixel so sparse taps read as fine grain rather than
+// ghost copies: one sized to this pixel's own blur, one wide so soft neighbours spill gently over
+// sharper pixels. Out-of-focus areas can also dim a little (uDim) to steer the eye.
 
 out vec4 fragColor;
 
 uniform sampler2D uSrc;
 uniform vec2  uRes;
 uniform float uCocMax;      // px for blur = 1; 0 = no depth of field
-uniform int   uTaps;        // per tap set
+uniform int   uTaps;        // per tap set (at least 32)
+uniform float uDim;         // how much the fully out-of-focus parts dim, 0..1
 uniform int   uMaskCircle;  // domemaster: black outside the circle
 uniform float uExposure;
 uniform float uMaster;
@@ -2318,7 +2323,8 @@ float hash31(vec3 p) {     // same as lattice.frag, so the dither matches
     return fract((p.x + p.y) * p.z);
 }
 
-float coc(float b) { return clamp(b, 0.0, 1.0) * uCocMax; }
+float amount(float b) { b = clamp(b, 0.0, 1.0); return b * b; }   // gentle start just outside the radius
+float coc(float b) { return amount(b) * uCocMax; }
 
 vec3 tonemap(vec3 x) {
     x *= uExposure;
@@ -2330,29 +2336,36 @@ void main() {
     if (uMaskCircle == 1 && length(uv * 2.0 - 1.0) > 1.0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
     vec4 c = texelFetch(uSrc, ivec2(gl_FragCoord.xy), 0);
     vec3 col = c.rgb;
-    if (uCocMax > 0.0 && uTaps > 0) {
+    if (uCocMax > 0.0) {
         float cc = coc(c.a);
         vec3 sum = c.rgb;
         float tot = 1.0;
-        float n = float(uTaps);
+        int taps = clamp(uTaps, 32, 128);
+        float n = float(taps);
+        float spin = hash31(vec3(gl_FragCoord.xy, 3.0)) * 6.2831853;
         for (int set = 0; set < 2; set++) {
             float R = set == 0 ? cc : uCocMax;
-            if (R < 0.75) continue;                       // nothing to gather at this size
+            if (R < 0.6) continue;                        // nothing to gather at this size
             float dr = R / sqrt(n);                       // spacing between taps
-            float lod = max(log2(dr) + 1.0, 0.0);         // a pre-blurred level smooths between taps
-            for (int i = 0; i < uTaps; i++) {
+            float lod = max(log2(dr), 0.0);               // a pre-blurred level fills the gaps between taps
+            for (int i = 0; i < taps; i++) {
                 float r = sqrt((float(i) + 0.5) / n) * R;
-                float a = float(i) * 2.39996323 + float(set) * 1.3;
+                float a = float(i) * 2.39996323 + spin + float(set) * 1.3;
                 vec4 s = textureLod(uSrc, uv + vec2(cos(a), sin(a)) * r / uRes, lod);
-                float sc = coc(s.a);
-                if (set == 1 && sc <= cc) continue;       // the wide set only adds blurrier neighbours
-                float m = smoothstep(r - dr, r + dr, sc);
-                sum += mix(sum / tot, s.rgb, m);
-                tot += 1.0;
+                float w;
+                if (set == 0) w = exp(-2.0 * (r / max(cc, 1e-3)) * (r / max(cc, 1e-3)));   // this pixel's own soft blur
+                else {                                    // a softer neighbour spilling over a sharper pixel
+                    float sc = coc(s.a);
+                    if (sc <= cc + 0.5 || r > sc) continue;
+                    w = 0.5 * exp(-2.0 * (r / sc) * (r / sc));
+                }
+                sum += s.rgb * w;
+                tot += w;
             }
         }
         col = sum / tot;
     }
+    col *= 1.0 - uDim * amount(c.a);
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients
@@ -2936,7 +2949,7 @@ if (typeof module !== "undefined") module.exports = Core;
   const FRAG = $("#frag-src").textContent;
   const POST = $("#post-src").textContent;
   const QMETA = JSON.parse($("#quote-meta").textContent);
-  const STORE = "anotherdistraction.playground.params.v3";
+  const STORE = "anotherdistraction.playground.params.v4";
   const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
   const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
@@ -3151,7 +3164,7 @@ if (typeof module !== "undefined") module.exports = Core;
       const pf = (n, v) => { const l = this.PL(n); if (l) gl.uniform1f(l, v); };
       const pi = (n, v) => { const l = this.PL(n); if (l) gl.uniform1i(l, v); };
       pi("uSrc", 10); const lr = this.PL("uRes"); if (lr) gl.uniform2f(lr, w, h);
-      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
+      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pf("uDim", (D.dim ?? 0) * fstr); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
       pf("uExposure", look.exposure); pf("uMaster", TL.master(t)); pf("uSeed", P.seed);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
@@ -3565,15 +3578,16 @@ if (typeof module !== "undefined") module.exports = Core;
         h("p", { class: "help" }, "Focus travels with the newest coloured blob through the lattice in 3D. Everything near it is sharp; further away it goes gently out of focus. A lattice cell is 2 units."),
         range("dof.focus_radius", "In-focus radius", { min: 0, max: 40, step: 0.5,
           help: "Every strut within this distance of the blob stays pin-sharp." }),
-        range("dof.falloff", "Fade to soft over", { min: 0.5, max: 60, step: 0.5,
-          help: "Beyond the radius, focus fades gently over this much more distance. Small = a hard edge, large = a slow, gentle drop-off." }),
+        range("dof.falloff", "Fade to soft over", { min: 1, max: 80, step: 0.5,
+          help: "Beyond the radius, softness creeps in gently over this much more distance. Small = a quick drop-off, large = a long, gradual one." }),
         h("h4", {}, "Fine-tuning"),
-        range("dof.max_deg", "How soft is soft", { min: 0, max: 4, step: 0.05, unit: "°",
-          help: "How blurry things are once fully out of focus (0 turns the effect off)." }),
+        range("dof.max_deg", "How soft is soft", { min: 0, max: 2, step: 0.05, unit: "°",
+          help: "Blur at the far end of the fade, in degrees of the dome. 0.3–0.6 is subtle; 0 turns blur off." }),
+        range("dof.dim", "Dim what's out of focus", { min: 0, max: 0.8, step: 0.01,
+          help: "Out-of-focus struts also get a little darker, steering the eye without more blur." }),
         range("dof.rack_s", "Focus moves to a new blob in", { min: 0.05, max: 4, step: 0.05, unit: "s" }),
         keys("dof.strength_keys", "On / off over the show", { tmax: 300, vmin: 0, vmax: 1, linear: true,
-          help: "1 = on, 0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." }),
-        range("dof.taps", "Blur quality", { min: 8, max: 128, step: 8, help: "Lower is faster while you play; renders use the saved value." })),
+          help: "1 = on, 0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." })),
       group("Supernova", "the reward",
         range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
           help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),

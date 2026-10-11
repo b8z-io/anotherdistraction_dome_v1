@@ -1375,10 +1375,10 @@
     ]
   },
   "dof": {
-    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that it softens gently over the next `falloff` units until fully out of focus (max_deg of blur). Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
-    "focus_radius": 6.0,
-    "falloff": 16.0,
-    "max_deg": 1.0,
+    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that softness creeps in gently (eased) over the next `falloff` units, up to max_deg of blur, and out-of-focus parts dim by up to `dim`. Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
+    "focus_radius": 8.0,
+    "falloff": 30.0,
+    "max_deg": 0.6,
     "rack_s": 0.7,
     "taps": 64,
     "strength_keys": [
@@ -1406,7 +1406,8 @@
         400,
         0
       ]
-    ]
+    ],
+    "dim": 0.2
   },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",

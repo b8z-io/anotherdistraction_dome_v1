@@ -1,18 +1,22 @@
 #version 330
 // Another Distraction — second pass: depth of field, then tonemap.
-// Input (uSrc, mipmapped): linear HDR colour in rgb, blur amount in a (0 = in focus, 1 = softest,
-// from how far that point is from the focus bubble — see lattice.frag).
+// Input (uSrc, mipmapped): linear HDR colour in rgb, focus distance in a (0 = inside the focus
+// radius around the blob, 1 = at or beyond the end of the falloff — see lattice.frag).
 //
-// A pixel with blur b spreads into a disc b * uCocMax pixels across. Gathered with two
-// spiral tap sets: one sized to this pixel's own blur, one at the largest blur so soft
-// neighbours can spill their light over sharper pixels nearby.
+// That distance is eased (squared) into a blur amount, so things just outside the focus radius get
+// only a whisper of softness and the blur builds gently further out. A pixel with blur amount b is a
+// soft Gaussian b * uCocMax pixels across (no hard bokeh discs, which turn thin struts into doubled
+// lines). Gathered with two spirals, rotated per pixel so sparse taps read as fine grain rather than
+// ghost copies: one sized to this pixel's own blur, one wide so soft neighbours spill gently over
+// sharper pixels. Out-of-focus areas can also dim a little (uDim) to steer the eye.
 
 out vec4 fragColor;
 
 uniform sampler2D uSrc;
 uniform vec2  uRes;
 uniform float uCocMax;      // px for blur = 1; 0 = no depth of field
-uniform int   uTaps;        // per tap set
+uniform int   uTaps;        // per tap set (at least 32)
+uniform float uDim;         // how much the fully out-of-focus parts dim, 0..1
 uniform int   uMaskCircle;  // domemaster: black outside the circle
 uniform float uExposure;
 uniform float uMaster;
@@ -24,7 +28,8 @@ float hash31(vec3 p) {     // same as lattice.frag, so the dither matches
     return fract((p.x + p.y) * p.z);
 }
 
-float coc(float b) { return clamp(b, 0.0, 1.0) * uCocMax; }
+float amount(float b) { b = clamp(b, 0.0, 1.0); return b * b; }   // gentle start just outside the radius
+float coc(float b) { return amount(b) * uCocMax; }
 
 vec3 tonemap(vec3 x) {
     x *= uExposure;
@@ -36,29 +41,36 @@ void main() {
     if (uMaskCircle == 1 && length(uv * 2.0 - 1.0) > 1.0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
     vec4 c = texelFetch(uSrc, ivec2(gl_FragCoord.xy), 0);
     vec3 col = c.rgb;
-    if (uCocMax > 0.0 && uTaps > 0) {
+    if (uCocMax > 0.0) {
         float cc = coc(c.a);
         vec3 sum = c.rgb;
         float tot = 1.0;
-        float n = float(uTaps);
+        int taps = clamp(uTaps, 32, 128);
+        float n = float(taps);
+        float spin = hash31(vec3(gl_FragCoord.xy, 3.0)) * 6.2831853;
         for (int set = 0; set < 2; set++) {
             float R = set == 0 ? cc : uCocMax;
-            if (R < 0.75) continue;                       // nothing to gather at this size
+            if (R < 0.6) continue;                        // nothing to gather at this size
             float dr = R / sqrt(n);                       // spacing between taps
-            float lod = max(log2(dr) + 1.0, 0.0);         // a pre-blurred level smooths between taps
-            for (int i = 0; i < uTaps; i++) {
+            float lod = max(log2(dr), 0.0);               // a pre-blurred level fills the gaps between taps
+            for (int i = 0; i < taps; i++) {
                 float r = sqrt((float(i) + 0.5) / n) * R;
-                float a = float(i) * 2.39996323 + float(set) * 1.3;
+                float a = float(i) * 2.39996323 + spin + float(set) * 1.3;
                 vec4 s = textureLod(uSrc, uv + vec2(cos(a), sin(a)) * r / uRes, lod);
-                float sc = coc(s.a);
-                if (set == 1 && sc <= cc) continue;       // the wide set only adds blurrier neighbours
-                float m = smoothstep(r - dr, r + dr, sc);
-                sum += mix(sum / tot, s.rgb, m);
-                tot += 1.0;
+                float w;
+                if (set == 0) w = exp(-2.0 * (r / max(cc, 1e-3)) * (r / max(cc, 1e-3)));   // this pixel's own soft blur
+                else {                                    // a softer neighbour spilling over a sharper pixel
+                    float sc = coc(s.a);
+                    if (sc <= cc + 0.5 || r > sc) continue;
+                    w = 0.5 * exp(-2.0 * (r / sc) * (r / sc));
+                }
+                sum += s.rgb * w;
+                tot += w;
             }
         }
         col = sum / tot;
     }
+    col *= 1.0 - uDim * amount(c.a);
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients
