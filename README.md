@@ -147,6 +147,8 @@ python movie.py frames/4k --codec hevc -o seed.mp4   # HEVC, smaller files for r
 python movie.py frames/prev --audio score/mix_stereo.wav   # lay in the soundtrack
 ```
 
+`--ambix score/mix_ambix.wav` (with `--audio`) adds the first-order AmbiX mix as a second audio track (W Y Z X, ACN/SN3D); the stereo track stays the default so the file still plays normally anywhere.
+
 `--audio` offsets the soundtrack to the first frame, so a partial render
 (say 60–90s) still lines up. `--size-mb N` does a 2-pass H.264 that fills
 just under N MB (it works out the bitrate from the length), and
