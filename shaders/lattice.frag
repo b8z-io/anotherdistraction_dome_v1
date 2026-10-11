@@ -38,23 +38,48 @@ uniform vec3  uSeedPos;     // world (= root node)
 uniform float uStar;
 uniform float uStarSize;
 
-// ---- colour brought back by tangents (indexed by tangent, max 8)
+// ---- colour brought back by tangents (indexed by tangent, max 16)
 uniform float uTime;
 uniform sampler3D uPaint0;  // per node: (arrival s, coverage) for tangents 0,1
 uniform sampler3D uPaint1;  // ...2,3
 uniform sampler3D uPaint2;  // ...4,5
 uniform sampler3D uPaint3;  // ...6,7
+uniform sampler3D uPaint4;  // ...8,9
+uniform sampler3D uPaint5;  // ...10,11
+uniform sampler3D uPaint6;  // ...12,13
+uniform sampler3D uPaint7;  // ...14,15
 uniform int   uNumT;
-uniform vec3  uSpCol[8];    // each tangent's own colour
-uniform float uLandT[8];    // when it landed
-uniform float uHueSpread[8];// hue drift across its stain (radians)
-uniform float uHueTime[8];  // ...reached this many seconds after landing
-uniform float uSpPulse[8];  // brightness of the travelling wavefront
+uniform vec4  uSpCol[16];   // rgb = the tangent's own colour, a = launch time (nothing to paint before it)
+uniform vec4  uSpA[16];     // landing time, hue drift (radians), hue drift time (s), wavefront brightness
+uniform vec4  uSpB[16];     // colour recedes from fade start (s) over fade length (s); length 0 = it stays
 uniform float uSoftT;       // fade-in time as colour arrives at a node (s)
 uniform float uPulseT;      // duration of the wavefront flash at a node (s)
 uniform float uTintAmt;     // how fully the colour replaces the cool base
 uniform float uHueJitter;   // node-to-node hue variation (radians)
 uniform float uVivid;       // brightness of painted struts relative to the base
+
+// ---- the show
+uniform float uMaster;      // overall picture level: 0 = black
+uniform float uLatLevel;    // brightness of the lattice alone (the afterglow fading)
+uniform float uNovaT;       // the supernova: from this time the lattice wears every colour
+uniform float uNovaHue;     // ...hue turns this many radians per path unit out from the star
+uniform float uNovaLevel;   // ...at this brightness
+uniform vec4  uShell;       // its shock shell: radius, width, brightness (0 = none)
+
+// ---- the credo, in light (camera frame; texture: R glyphs, G halo)
+uniform sampler2D uText;
+uniform vec2  uTextSize;    // texture size, px
+uniform vec4  uTextRect;    // current card: x, y, w, h in px
+uniform vec4  uCreditRect;
+uniform vec3  uTextDir;     // card centre direction
+uniform vec3  uCreditDir;
+uniform vec2  uTextAlpha;   // card, credit opacity
+uniform float uTextRad;     // radians per texture px
+uniform float uTextLod;     // mip level to sample at
+uniform vec3  uTextCol;
+uniform float uTextHalo;
+uniform float uFocus;       // hyperfocus: 0..1 dims everything but one tangent's colour
+uniform int   uFocusIdx;    // ...this one
 
 // ---- ribbons in flight (per active slot, max 4; 24 points each, tail -> head)
 uniform int   uNumRib;
@@ -116,11 +141,11 @@ vec3 hueRot(vec3 c, float a) {
     return max(c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca), 0.0);
 }
 
-vec2 paintOf(ivec3 g, int i) {
-    int t = i / 2, j = i - 2 * t;
-    vec4 v = t == 0 ? texelFetch(uPaint0, g, 0) : t == 1 ? texelFetch(uPaint1, g, 0)
-           : t == 2 ? texelFetch(uPaint2, g, 0) : texelFetch(uPaint3, g, 0);
-    return j == 0 ? v.xy : v.zw;
+vec4 paintTex(ivec3 g, int t) {
+    return t == 0 ? texelFetch(uPaint0, g, 0) : t == 1 ? texelFetch(uPaint1, g, 0)
+         : t == 2 ? texelFetch(uPaint2, g, 0) : t == 3 ? texelFetch(uPaint3, g, 0)
+         : t == 4 ? texelFetch(uPaint4, g, 0) : t == 5 ? texelFetch(uPaint5, g, 0)
+         : t == 6 ? texelFetch(uPaint6, g, 0) : texelFetch(uPaint7, g, 0);
 }
 
 // Colour carried back by tangents, at one lattice node.
@@ -129,21 +154,40 @@ vec4 spreadAt(vec3 id, out vec3 emis) {
     emis = vec3(0.0);
     vec4 acc = vec4(0.0);
     ivec3 g = gridOf(id);
-    if (uNumT == 0 || !inGrid(g)) return acc;
-    for (int i = 0; i < 8; i++) {
-        if (i >= uNumT) break;
-        vec2 pc = paintOf(g, i);
-        float arr = pc.x, cov = pc.y;
-        if (arr < 0.0 || uTime < arr - uPulseT * 2.0) continue;
-        float dt = uTime - arr;
-        // hue drifts across the stain (early = the ribbon's own colour), plus a little per node
-        float drift = uHueSpread[i] * clamp((arr - uLandT[i]) / uHueTime[i], -0.4, 1.0);
-        float jit = (hash31(id * 1.37 + float(i) * 7.1) - 0.5) * uHueJitter;
-        vec3 col = hueRot(uSpCol[i], drift + jit);
-        float w = clamp(dt / uSoftT + 0.5, 0.0, 1.0) * cov * uTintAmt;
-        acc = acc * (1.0 - w) + vec4(col, 1.0) * w;
-        float x = dt / uPulseT;
-        emis += col * exp(-x * x) * cov * uSpPulse[i];
+    if (!inGrid(g)) return acc;
+    if (uTime >= uNovaT) {                       // after the supernova: every colour at once
+        // rings of colour travelling out from the star, broken up node by node
+        float dn = texelFetch(uGraph, g, 0).r;
+        float ang = dn * uNovaHue + (hash31(id * 2.11) - 0.5) * 3.0;
+        acc = vec4(hueRot(vec3(1.0, 0.22, 0.08), ang) * uNovaLevel, 1.0);
+    }
+    if (uNumT == 0) return acc;
+    for (int t = 0; t < 8; t++) {
+        if (2 * t >= uNumT) break;
+        if (uTime < uSpCol[2 * t].a && (2 * t + 1 >= uNumT || uTime < uSpCol[2 * t + 1].a)) continue;  // nothing launched yet
+        vec4 v = paintTex(g, t);
+        for (int j = 0; j < 2; j++) {
+            int i = 2 * t + j;
+            if (i >= uNumT) break;
+            float arr = j == 0 ? v.x : v.z, cov = j == 0 ? v.y : v.w;
+            if (arr < 0.0 || uTime < arr - uPulseT * 2.0) continue;
+            float dt = uTime - arr;
+            vec4 A = uSpA[i];
+            // hue drifts across the stain (early = the ribbon's own colour), plus a little per node
+            float drift = A.y * clamp((arr - A.x) / A.z, -0.4, 1.0);
+            float jit = (hash31(id * 1.37 + float(i) * 7.1) - 0.5) * uHueJitter;
+            vec3 col = hueRot(uSpCol[i].rgb, drift + jit);
+            float keep = i == uFocusIdx ? 1.0 : 1.0 - 0.7 * uFocus;
+            vec4 B = uSpB[i];
+            if (B.y > 0.0) {                     // a colour that recedes (e.g. hyperfocus washing out)
+                cov *= 1.0 - smoothstep(B.x, B.x + B.y, uTime);
+                if (cov <= 0.0) continue;
+            }
+            float w = clamp(dt / uSoftT + 0.5, 0.0, 1.0) * cov * uTintAmt;
+            acc = acc * (1.0 - w) + vec4(col * keep, 1.0) * w;
+            float x = dt / uPulseT;
+            emis += col * exp(-x * x) * cov * A.w * keep;
+        }
     }
     return acc;
 }
@@ -202,7 +246,7 @@ vec3 strutColour(vec3 p, float tip, out vec3 emis, out float painted) {
     vec4 s1 = spreadAt(id + dir, e1);
     vec4 s = mix(s0, s1, h);
     emis = mix(e0, e1, h);
-    vec3 base = mix(uColStrut, uColTip, clamp(tip * 1.5, 0.0, 1.0));
+    vec3 base = mix(uColStrut, uColTip, clamp(tip * 1.5, 0.0, 1.0)) * (1.0 - 0.75 * uFocus);
     painted = s.a;
     return base * (1.0 - s.a) + s.rgb * uVivid;
 }
@@ -268,6 +312,42 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
     return col;
 }
 
+// the supernova's shock shell: a thin sphere of light around the star, brightest edge-on
+vec3 shell(vec3 ro, vec3 rd) {
+    float R = uShell.x, w = uShell.y;
+    vec3 oc = ro - uSeedPos;
+    float b = dot(oc, rd), c = dot(oc, oc) - R * R, h = b * b - c;
+    vec3 col = vec3(0.0);
+    float dl = sqrt(max(dot(oc, oc) - b * b, 0.0));                 // ray's closest approach to the star
+    if (b < 0.0 || c < 0.0) {
+        vec3 n0 = normalize(ro + rd * max(-b, 0.0) - uSeedPos);
+        col += hueRot(vec3(1.0, 0.3, 0.1), atan(n0.x, n0.z) + n0.y * 2.0) * exp(-pow((dl - R) / w, 2.0)) * 0.6;
+    }
+    if (h > 0.0) {
+        float sh = sqrt(h);
+        for (int k = 0; k < 2; k++) {
+            float t = -b + (k == 0 ? -sh : sh);
+            if (t <= 0.0) continue;
+            vec3 n = normalize(ro + rd * t - uSeedPos);
+            float edge = min(1.0 / max(abs(dot(n, rd)), 0.06), 8.0) - 1.0;   // ~0 face-on, bright at the limb
+            col += hueRot(vec3(1.0, 0.3, 0.1), atan(n.x, n.z) + n.y * 2.0) * edge * edge * 0.04;
+        }
+    }
+    return col * uShell.z;
+}
+
+// one card of text on the dome: gnomonic projection around its centre direction
+vec2 textAt(vec3 d, vec3 c, vec4 rect) {
+    float dc = dot(d, c);
+    if (dc <= 0.2) return vec2(0.0);
+    vec3 r = normalize(cross(c, vec3(0.0, 1.0, 0.0)));
+    vec3 u = cross(r, c);
+    vec2 px = vec2(atan(dot(d, r) / dc), atan(dot(d, u) / dc)) / uTextRad;   // texture px from the centre
+    vec2 a = vec2(rect.x + rect.z * 0.5 + px.x, rect.y + rect.w * 0.5 - px.y);
+    if (a.x < rect.x || a.x > rect.x + rect.z || a.y < rect.y || a.y > rect.y + rect.w) return vec2(0.0);
+    return textureLod(uText, a / uTextSize, uTextLod).rg;
+}
+
 vec3 shade(vec3 rdCam) {
     vec3 rd = uCamRot * rdCam;            // world-space ray
     vec3 col = vec3(0.0);
@@ -295,7 +375,7 @@ vec3 shade(vec3 rdCam) {
                 float g = fog * near / (1.0 + pow(max(d, 0.0) / uGlowW, 2.0));
                 vec3 e;
                 vec4 s = spreadAt(floor(p / uCell + 0.5), e);
-                glow += g * (uColDeep * (1.0 - s.a) + s.rgb * 0.9) + e * g * 0.6;
+                glow += g * (uColDeep * (1.0 - s.a) * (1.0 - 0.75 * uFocus) + s.rgb * 0.9) + e * g * 0.6;
             }
             tipg += fog * near * tip;
             if (d < 0.0008 * t) {
@@ -303,7 +383,7 @@ vec3 shade(vec3 rdCam) {
                 float painted;
                 vec3 sc = strutColour(p, tip, emis, painted);
                 // distant struts sink into deep blue — or, if painted, a deep shade of their own colour
-                vec3 far = mix(uColDeep * 2.5, sc * 0.3, painted);
+                vec3 far = mix(uColDeep * 2.5 * (1.0 - 0.75 * uFocus), sc * 0.3, painted);
                 vec3 base = mix(far, sc, fog);
                 hitCol = (base * mix(0.35, 1.0, fog) + emis * fog * 0.35) * near;
                 tHit = t;
@@ -317,11 +397,17 @@ vec3 shade(vec3 rdCam) {
             t += max(min(d * 0.9, tExit), 0.0015);
             if (t > uFar || length(p) > uExtent + uCell) break;
         }
-        col += hitCol;
-        col += glow * uGlow * 0.02;
-        col += uColTip * tipg * uTipGlow * 0.02;
+        col += (hitCol + glow * uGlow * 0.02 + uColTip * tipg * uTipGlow * 0.02) * uLatLevel;
     }
     col += ribbons(uCamPos, rd, tHit);
+    if (uShell.z > 0.0) col += shell(uCamPos, rd);
+    // the credo: a soft dark halo behind the words, then the words in light
+    if (uTextAlpha.x + uTextAlpha.y > 0.0) {
+        vec2 a = textAt(rdCam, uTextDir, uTextRect) * uTextAlpha.x;
+        vec2 b = textAt(rdCam, uCreditDir, uCreditRect) * uTextAlpha.y;
+        float glyph = max(a.x, b.x), halo = max(a.y, b.y);
+        col = col * (1.0 - uTextHalo * halo) + uTextCol * glyph;
+    }
     return col;
 }
 
@@ -341,11 +427,11 @@ void main() {
         if (dot(rd, rd) < 0.5) continue;  // outside the dome circle
         acc += shade(rd);
     }
-    vec3 col = acc / float(uSS * uSS);
+    vec3 col = acc / float(uSS * uSS) * uMaster;
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients
     float dth = hash31(vec3(gl_FragCoord.xy, 7.0)) - 0.5;
-    col += dth / 255.0;
+    col += dth / 255.0 * min(uMaster * 4.0, 1.0);   // true black when the show is dark
     fragColor = vec4(col, 1.0);
 }

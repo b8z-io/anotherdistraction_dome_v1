@@ -34,4 +34,8 @@ for X in T.tangents:
         "path": X["path"][::25].tolist(), "n_brushed": X["n_brushed"],
         "paint_arrival": X["paint_arrival"].tolist(), "ribbons": rb,
     })
+times = [0.5, 30.0, 151.3, 158.0, 219.7, 221.7, 222.4, 230.0, 247.2, 270.5, 274.9, 284.1]
+out["show"] = [[t, T.star(t), T.master(t), T.lattice_level(t), T.focus(t), list(T.shell(t)), list(T.quote(t))] for t in times]
+M = P.get("meteor")
+out["meteor"] = [[t, T.meteor(t)[0].tolist(), T.meteor(t)[1].tolist()] for t in (M["t"] + 0.3, M["t"] + 1.1)] if M else []
 json.dump(out, sys.stdout)

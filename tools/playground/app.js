@@ -7,9 +7,10 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const DEFAULTS = JSON.parse($("#params-default").textContent);
   const FRAG = $("#frag-src").textContent;
+  const QMETA = JSON.parse($("#quote-meta").textContent);
   const STORE = "anotherdistraction.playground.params.v1";
-  const PALETTE = [[1, 0.62, 0.04], [1, 0.1, 0.62], [0.5, 1, 0.08], [0.62, 0.2, 1],
-                   [1, 0.32, 0.2], [0.1, 1, 0.78], [1, 0.45, 0], [1, 0.2, 0.4]];
+  const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
+  const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
   // ---------------------------------------------------------------- state
   let P = clone(DEFAULTS), restored = false;
@@ -59,6 +60,19 @@
       gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       this.loc = {};
       this.tex = [];
+      // the credo's typeset texture (same file render.py uses), on unit 9
+      const qt = gl.createTexture(), img = new Image();
+      img.onload = () => {
+        gl.activeTexture(gl.TEXTURE9);
+        gl.bindTexture(gl.TEXTURE_2D, qt);
+        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        this.onTexture && this.onTexture();
+      };
+      img.src = $("#quote-png").textContent.trim();
     }
     L(name) {
       if (!(name in this.loc)) this.loc[name] = this.gl.getUniformLocation(this.prog, name);
@@ -89,33 +103,48 @@
       const fv = (n, a) => { const l = this.L(n); if (l) gl.uniform1fv(l, a); };
       const v3v = (n, a) => { const l = this.L(n); if (l) gl.uniform3fv(l, a.flat()); };
       const v4v = (n, a) => { const l = this.L(n); if (l) gl.uniform4fv(l, a.flat()); };
-      const pad8 = (xs, fill = 0) => xs.concat(new Array(8 - xs.length).fill(fill));
+      const pad16 = (xs, fill) => xs.concat(new Array(16 - xs.length).fill(fill));
       const o = P.output, L = P.lattice, S = P.seed_point, look = P.look, R = P.render, C = P.camera, PT = P.paint;
-      const G = TL.G, Tn = TL.tangents, Pt = P.tangents || [];
+      const G = TL.G, Tn = TL.tangents, Pt = P.tangents || [], SH = P.show || {}, NV = P.nova || {}, Q = P.quote, ME = P.meteor;
       const live = (k) => Tn.map((T, n) => (Pt[n] && Pt[n][k] !== undefined ? Pt[n][k] : T[k]));
-      ["intensity", "absorb_s", "pulse", "width", "head_glow", "head_size", "flash_size", "color", "hue_spread_deg", "hue_time_s"]
+      ["intensity", "absorb_s", "pulse", "width", "head_glow", "head_size", "flash_size", "color", "hue_spread_deg", "hue_time_s", "fade_s"]
         .forEach((k) => live(k).forEach((v, n) => { Tn[n][k] = v; }));
-      for (let u = 0; u < 5; u++) i(u === 0 ? "uGraph" : "uPaint" + (u - 1), u);
+      i("uGraph", 0);
+      for (let u = 0; u < 8; u++) i("uPaint" + u, 1 + u);
+      i("uText", 9);
       v2("uRes", [w, h]); i("uProj", opt.proj); f("uFov", o.fov_deg); f("uTilt", o.tilt_deg); i("uSS", opt.ss);
       f("uSeed", P.seed); f("uVoidIn", C.void_inner); f("uVoidOut", C.void_outer);
       m3("uLatRot", G.rot); f("uCell", L.cell); f("uStrutR", L.strut_radius); f("uNodeR", L.node_radius);
       i("uGridH", G.H); f("uExtent", L.extent); f("uXDelay", L.crosslink_delay);
       v3("uSeedPos", G.rootWorld); f("uStarSize", S.star_size_rad);
       i("uNumT", Tn.length);
-      v3v("uSpCol", pad8(Tn.map((T) => T.color), [0, 0, 0]).map((x) => x || [0, 0, 0]));
-      fv("uLandT", pad8(Tn.map((T) => T.land_s)));
-      fv("uHueSpread", pad8(Tn.map((T) => T.hue_spread_deg * Math.PI / 180)));
-      fv("uHueTime", pad8(Tn.map((T) => T.hue_time_s), 1));
+      v4v("uSpCol", pad16(Tn.map((T) => [...T.color, T.launch_s]), [0, 0, 0, 1e9]));
+      v4v("uSpA", pad16(Tn.map((T) => [T.land_s, T.hue_spread_deg * Math.PI / 180, T.hue_time_s, TL.pulse(T, t)]), [0, 0, 1, 0]));
+      v4v("uSpB", pad16(Tn.map((T) => [...(T.fade_s || [0, 0]), 0, 0]), [0, 0, 0, 0]));
       f("uSoftT", PT.fade_in_s); f("uPulseT", PT.pulse_s); f("uTintAmt", PT.tint_amount);
       f("uHueJitter", PT.hue_jitter_deg * Math.PI / 180); f("uVivid", PT.vivid);
+      i("uFocusIdx", SH.focus_tangent ?? -1); f("uFocus", TL.focus(t));
+      f("uMaster", TL.master(t)); f("uLatLevel", TL.latticeLevel(t));
+      f("uNovaT", NV.t ?? 1e9); f("uNovaHue", NV.hue_per_path ?? 0); f("uNovaLevel", NV.level ?? 0.6);
+      const shl = TL.shell(t); v4v("uShell", [[...shl, 0]]);
       v3("uColDeep", look.col_deep); v3("uColStrut", look.col_strut); v3("uColTip", look.col_tip);
       f("uGlow", look.glow); f("uGlowW", look.glow_width); f("uTipGlow", look.tip_glow);
       f("uFogDist", look.fog_distance); f("uExposure", look.exposure);
       i("uSteps", R.steps); f("uFar", R.far);
+      // the credo
+      const [card, ca, cr] = TL.quote(t);
+      if (Q && card >= 0 && card < QMETA.cards.length) {
+        const rad = Q.deg_per_px * Math.PI / 180, rect = QMETA.cards[card], crect = QMETA.credit;
+        const drop = (rect[3] / 2 + crect[3] / 2) * rad * 180 / Math.PI + Q.credit_gap_deg;
+        const screen = o.fov_deg * Math.PI / 180 / h / Math.max(opt.ss, 1);
+        v2("uTextSize", QMETA.size); v4v("uTextRect", [rect]); v4v("uCreditRect", [crect]);
+        v3("uTextDir", Core.dirFrom(Q.dir[0], Q.dir[1])); v3("uCreditDir", Core.dirFrom(Q.dir[0], Q.dir[1] - drop));
+        v2("uTextAlpha", [ca, cr]); f("uTextRad", rad); f("uTextLod", Math.max(0, Math.log2(screen / rad)));
+        v3("uTextCol", Q.color.map((x) => x * Q.level)); f("uTextHalo", Q.halo);
+      } else v2("uTextAlpha", [0, 0]);
       // per frame
       const cam = TL.camera(t);
       f("uFront", TL.front(t)); f("uStar", TL.star(t)); v3("uCamPos", cam.pos); m3("uCamRot", cam.R); f("uTime", t);
-      fv("uSpPulse", pad8(Tn.map((T) => TL.pulse(T, t))));
       const rib = new Array(96).fill(null).map(() => [0, 0, 0, 0]);
       const ribcol = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
       const flash = new Array(8).fill(null).map(() => [0, 0, 0, 0]);
@@ -134,6 +163,12 @@
         }
         const fl = TL.flash(T, t);
         if (fl > 0.01 && fslot < 8) { flash[fslot] = [...T.land, fl]; flashcol[fslot] = [...T.color, T.flash_size]; fslot++; }
+      }
+      const m = TL.meteor(t);
+      if (m && slot < 4) {
+        m.pts.forEach((p, q) => { rib[slot * 24 + q] = [p[0], p[1], p[2], m.inten[q]]; });
+        ribcol[slot] = [...ME.color, ME.width]; slot++;
+        if (fslot < 8) { flash[fslot] = [...m.pts[m.pts.length - 1], ME.head_glow * m.inten[m.inten.length - 1] / Math.max(ME.intensity, 1e-6)]; flashcol[fslot] = [...ME.color, ME.head_size]; fslot++; }
       }
       i("uNumRib", slot); v4v("uRib", rib); v4v("uRibCol", ribcol); v4v("uFlash", flash); v4v("uFlashCol", flashcol);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -308,7 +343,8 @@
         const tx = s("text", { x: X(t), y: H - 5, class: "axis", "text-anchor": "middle" }); tx.textContent = `${t}s`; svg.append(tx);
       }
       let d = "";
-      for (let q = 0; q <= 160; q++) { const t = q / 160 * tm; d += (q ? "L" : "M") + X(t).toFixed(1) + "," + Y(Core.pchip(ks, t)).toFixed(1); }
+      const curve = o.linear ? Core.lerpKeys : Core.pchip;
+      for (let q = 0; q <= 320; q++) { const t = q / 320 * tm; d += (q ? "L" : "M") + X(t).toFixed(1) + "," + Y(curve(ks, t)).toFixed(1); }
       svg.append(s("path", { d, class: "curve" }));
       svg.append(s("line", { x1: X(ui.t), x2: X(ui.t), y1: pad.t, y2: H - pad.b, class: "playhead" }));
       ks.forEach((k, n) => {
@@ -459,6 +495,8 @@
         range(`${b}.head_size`, "Head size", { min: 0.05, max: 1.5, step: 0.01 }),
         range(`${b}.flash_size`, "Landing flash size", { min: 0.1, max: 2.5, step: 0.05 }),
         h("h4", {}, "Paint"),
+        range(`${b}.fade_s.0`, "Colour recedes from", { min: 0, max: 300, step: 0.5, unit: "s", help: "Optional: when this comet's colour starts to drain away (hyperfocus washing out)." }),
+        range(`${b}.fade_s.1`, "…over", { min: 0, max: 30, step: 0.5, unit: "s", help: "0 = the colour stays." }),
         range(`${b}.spread_speed`, "Spread speed", { min: 0.5, max: 20, step: 0.1, help: "How fast its colour travels through the lattice from where it lands (path units/s)." }),
         range(`${b}.spread_limit`, "Spread reach", { min: 4, max: 90, step: 1, help: "How far the stain can reach (path units)." }),
         range(`${b}.pulse`, "Wavefront glow", { min: 0, max: 8, step: 0.1, help: "Brightness of the travelling edge of the colour." }),
@@ -508,15 +546,17 @@
         range("seed_point.star_fade_in_s.0", "Fade-in starts", { min: 0, max: 20, step: 0.1, unit: "s" }),
         range("seed_point.star_fade_in_s.1", "Fade-in ends", { min: 0, max: 30, step: 0.1, unit: "s" }),
         range("seed_point.star_intensity", "Brightness", { min: 0, max: 5, step: 0.05 }),
-        range("seed_point.star_size_rad", "Size", { min: 0.001, max: 0.03, step: 0.0005, unit: "rad" })),
+        range("seed_point.star_size_rad", "Size", { min: 0.001, max: 0.03, step: 0.0005, unit: "rad" }),
+        keys("seed_point.star_keys", "Brightness over time", { tmax: 300, vmin: 0, vmax: 10, linear: true,
+          help: "Multiplies the star: it flares as everything is pulled in, bursts at the supernova, then goes out." })),
       group("Growth", "how fast the lattice spreads",
-        keys("growth.front_keys", "Growth front", { tmax: 90, vmin: 0, vmax: 140, minKeys: 2,
+        keys("growth.front_keys", "Growth front", { tmax: 300, vmin: 0, vmax: 140, minKeys: 2,
           help: "How far along the branches growth has travelled at each time. Steeper = faster; flat = pauses. Drag points, double-click to add or remove." })),
       group("Camera", "the audience's viewpoint",
-        keys("camera.y_keys", "Rise (Y)", { tmax: 90, vmin: -4, vmax: 24, help: "Rising is the gentlest motion on a dome." }),
-        keys("camera.yaw_keys", "Turn (yaw)", { tmax: 90, vmin: -90, vmax: 90, help: "Slow turn about the zenith, degrees. Keep it under about 1°/s." }),
-        keys("camera.x_keys", "Drift right (X)", { tmax: 90, vmin: -12, vmax: 12 }),
-        keys("camera.z_keys", "Drift back (Z)", { tmax: 90, vmin: -12, vmax: 12 }),
+        keys("camera.y_keys", "Rise (Y)", { tmax: 300, vmin: -4, vmax: 24, help: "Rising is the gentlest motion on a dome." }),
+        keys("camera.yaw_keys", "Turn (yaw)", { tmax: 300, vmin: -90, vmax: 90, help: "Slow turn about the zenith, degrees. Keep it under about 1°/s." }),
+        keys("camera.x_keys", "Drift right (X)", { tmax: 300, vmin: -12, vmax: 12 }),
+        keys("camera.z_keys", "Drift back (Z)", { tmax: 300, vmin: -12, vmax: 12 }),
         range("camera.void_inner", "Clear bubble", { min: 0.2, max: 6, step: 0.1, help: "Nothing closer than this to the audience." }),
         range("camera.void_outer", "Fade-in distance", { min: 0.5, max: 12, step: 0.1, help: "Struts fade in out to this distance." })),
       group("Look", "light and colour",
@@ -528,6 +568,52 @@
         range("look.glow_width", "Glow width", { min: 0.01, max: 0.3, step: 0.005 }),
         range("look.tip_glow", "Tip glow", { min: 0, max: 8, step: 0.05 }),
         range("look.fog_distance", "Fog distance", { min: 4, max: 60, step: 0.5, help: "How quickly distance fades struts." })),
+      group("Show", "the arc of the whole piece",
+        range("show.end_s", "Length", { min: 30, max: 600, step: 1, unit: "s" }),
+        keys("show.lattice_keys", "Lattice brightness", { tmax: 300, vmin: 0, vmax: 1.2, linear: true,
+          help: "The lattice alone — the afterglow cooling and going out after the supernova." }),
+        keys("show.focus_keys", "Hyperfocus", { tmax: 300, vmin: 0, vmax: 1, help: "0–1: dims everything except the focus comet's colour." }),
+        select("show.focus_tangent", "Focus comet", "Whose colour stays bright during hyperfocus.",
+          [[-1, "none"], ...(P.tangents || []).map((T, n) => [n, `${n + 1}. ${T.name}`])]),
+        keys("show.master_keys", "Picture level", { tmax: 300, vmin: 0, vmax: 1, linear: true,
+          help: "Straight lines: two keys close together make a hard cut to black." }),
+        keys("show.audio_keys", "Sound level", { tmax: 300, vmin: 0, vmax: 1, linear: true,
+          help: "For score.py (the held breath before the supernova). Not heard here." })),
+      group("Supernova", "the reward",
+        range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
+          help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),
+        range("nova.shell_speed", "Shock-ring speed", { min: 1, max: 40, step: 0.5 }),
+        range("nova.shell_width", "Shock-ring width", { min: 0.05, max: 3, step: 0.05 }),
+        range("nova.intensity", "Shock-ring brightness", { min: 0, max: 12, step: 0.1 }),
+        range("nova.decay_s", "Shock-ring fades over", { min: 0.3, max: 10, step: 0.1, unit: "s" }),
+        range("nova.level", "Every-colour brightness", { min: 0, max: 2, step: 0.01, help: "The lattice's colours after the burst." }),
+        range("nova.hue_per_path", "Colour rings", { min: 0, max: 0.4, step: 0.005, help: "How fast the hue turns out from the star: rings of colour." })),
+      group("Credo", "Jack London, in light",
+        dirRow("quote.dir", "Placement", "Centre of the words on the dome."),
+        range("quote.deg_per_px", "Text size", { min: 0.01, max: 0.08, step: 0.001, unit: "°/px" }),
+        color("quote.color", "Colour"),
+        range("quote.level", "Brightness", { min: 0, max: 4, step: 0.01 }),
+        range("quote.halo", "Dark halo", { min: 0, max: 1, step: 0.01, help: "Darkens what's behind the words so they stay legible." }),
+        range("quote.fade_s", "Fade", { min: 0.1, max: 3, step: 0.05, unit: "s" }),
+        range("quote.credit_in", "Credit appears", { min: 0, max: 400, step: 0.1, unit: "s" }),
+        range("quote.credit_gap_deg", "Credit gap", { min: 0, max: 15, step: 0.1, unit: "°" }),
+        ...(P.quote ? P.quote.cards.flatMap((c, k) => [
+          h("h4", {}, `“${c.rows.join(" ")}”`),
+          range(`quote.cards.${k}.in`, "Appears", { min: 0, max: 400, step: 0.05, unit: "s" }),
+          range(`quote.cards.${k}.voice_at`, "Voice starts", { min: 0, max: 400, step: 0.05, unit: "s", help: "For score.py — your voice isn't played here." }),
+          range(`quote.cards.${k}.out`, "Gone by", { min: 0, max: 400, step: 0.05, unit: "s" })]) : [])),
+      group("Meteor", "the last distraction",
+        range("meteor.t", "At", { min: 0, max: 400, step: 0.1, unit: "s" }),
+        range("meteor.dur", "Crossing time", { min: 0.3, max: 6, step: 0.05, unit: "s" }),
+        dirRow("meteor.from_dir", "From"),
+        dirRow("meteor.to_dir", "To"),
+        range("meteor.dist", "Distance", { min: 5, max: 40, step: 0.5 }),
+        color("meteor.color", "Colour"),
+        range("meteor.width", "Width", { min: 0.01, max: 0.3, step: 0.005 }),
+        range("meteor.trail", "Trail", { min: 0.05, max: 1, step: 0.01 }),
+        range("meteor.intensity", "Brightness", { min: 0, max: 14, step: 0.1 }),
+        range("meteor.head_glow", "Head glow", { min: 0, max: 14, step: 0.1 }),
+        range("meteor.head_size", "Head size", { min: 0.05, max: 1.5, step: 0.01 })),
       group("Paint", "how tangents colour the lattice",
         range("paint.brush_radius", "Brush radius", { min: 0, max: 6, step: 0.1, help: "How close the comet's head must pass to paint a node." }),
         range("paint.brush_reach", "Brush bleed", { min: 0.5, max: 12, step: 0.1, help: "How far brushed colour bleeds from there (path units)." }),
@@ -538,7 +624,7 @@
         range("paint.hue_jitter_deg", "Hue variety", { min: 0, max: 90, step: 1, unit: "°", help: "Node-to-node hue variation." }),
         range("paint.vivid", "Vividness", { min: 0.2, max: 3, step: 0.01, help: "Brightness of painted struts." })),
       h("section", { class: "tsec" },
-        h("div", { class: "tsec-h" }, h("h3", {}, "Tangents"), h("span", { class: "gs" }, "each one a distraction · max 8"),
+        h("div", { class: "tsec-h" }, h("h3", {}, "Tangents"), h("span", { class: "gs" }, "each one a distraction · max 16"),
           h("button", { type: "button", id: "addT", onclick: addTangent }, "+ Add tangent")),
         h("div", { id: "tcards" }, (P.tangents || []).map((_, i) => tangentCard(i)))),
       group("Sound", "score.py — not previewed here",
@@ -552,6 +638,26 @@
         range("score.reverb_send.pings", "Reverb send · pings", { min: 0, max: 1.5, step: 0.01 }),
         range("score.reverb_send.paint", "Reverb send · paint", { min: 0, max: 1.5, step: 0.01 }),
         range("score.reverb_send.tangents", "Reverb send · tangents", { min: 0, max: 1.5, step: 0.01 }),
+        range("score.pad_decay_s", "Pads fade over", { min: 2, max: 120, step: 1, unit: "s" }),
+        range("score.pulse.start", "Hyperfocus pulse · from", { min: 0, max: 400, step: 0.5, unit: "s" }),
+        range("score.pulse.end", "Hyperfocus pulse · to", { min: 0, max: 400, step: 0.5, unit: "s" }),
+        range("score.pulse.bpm", "Hyperfocus pulse · tempo", { min: 40, max: 180, step: 1, unit: "bpm" }),
+        notes("score.pulse.notes", "Hyperfocus pulse · notes"),
+        range("score.pulse.level", "Hyperfocus pulse · level", { min: 0, max: 0.5, step: 0.005 }),
+        range("score.riser.start", "Overload riser · from", { min: 0, max: 400, step: 0.5, unit: "s" }),
+        range("score.riser.end", "Overload riser · to", { min: 0, max: 400, step: 0.5, unit: "s" }),
+        range("score.riser.level", "Overload riser · level", { min: 0, max: 0.5, step: 0.005 }),
+        range("score.inhale.start", "Inhale · from", { min: 0, max: 400, step: 0.1, unit: "s" }),
+        range("score.inhale.end", "Inhale · to", { min: 0, max: 400, step: 0.1, unit: "s" }),
+        range("score.inhale.level", "Inhale · level", { min: 0, max: 0.6, step: 0.005 }),
+        notes("score.nova.chord", "Supernova chord"),
+        range("score.nova.level", "Supernova chord level", { min: 0, max: 1, step: 0.01 }),
+        range("score.nova.decay_s", "Supernova rings for", { min: 2, max: 40, step: 0.5, unit: "s" }),
+        range("score.nova.boom_level", "Supernova boom", { min: 0, max: 1, step: 0.01 }),
+        range("score.regrow_chime_level", "Regrowth chimes", { min: 0, max: 0.3, step: 0.005 }),
+        range("score.voice.level", "Voice level", { min: 0, max: 4, step: 0.05 }),
+        range("score.voice.duck", "Drone dips under voice", { min: 0, max: 1, step: 0.01 }),
+        range("score.voice.reverb_send", "Voice reverb", { min: 0, max: 1, step: 0.01 }),
         range("score.reverb_level", "Reverb level", { min: 0, max: 2, step: 0.01 }),
         range("score.master_peak_db", "Master peak", { min: -12, max: 0, step: 0.1, unit: "dB" })),
       group("Render quality", "raymarch limits",
@@ -563,7 +669,7 @@
 
   function addTangent() {
     const Ts = P.tangents || (P.tangents = []);
-    if (Ts.length >= 8) { showError("The shader takes at most 8 tangents."); return; }
+    if (Ts.length >= 16) { showError("The shader takes at most 16 tangents."); return; }
     const last = Ts[Ts.length - 1] || clone(DEFAULTS.tangents[0]);
     const T = clone(last);
     T.name = `tangent ${Ts.length + 1}`;
@@ -574,7 +680,7 @@
     buildPanel(); openTangent(Ts.length - 1); changed("tangents"); seek(T.launch_s - 1.5);
   }
   function duplicateTangent(i) {
-    if (P.tangents.length >= 8) { showError("The shader takes at most 8 tangents."); return; }
+    if (P.tangents.length >= 16) { showError("The shader takes at most 16 tangents."); return; }
     const T = clone(P.tangents[i]);
     T.name += " copy"; T.launch_s = +(T.launch_s + 4).toFixed(1); T.color = PALETTE[P.tangents.length % PALETTE.length];
     P.tangents.splice(i + 1, 0, T);
@@ -599,6 +705,8 @@
       h("span", { class: "mk launch", style: `left:${T.launch_s / end * 100}%;--c:${toHex(T.color)}`, title: `${T.name}: launch ${T.launch_s}s` }),
       h("span", { class: "mk land", style: `left:${T.land_s / end * 100}%;--c:${toHex(T.color)}`, title: `${T.name}: lands ${T.land_s.toFixed(1)}s` })]));
     $("#endt").textContent = clock(end);
+    $("#sections").replaceChildren(...((P.show && P.show.sections) || []).filter((x) => x[0] <= end).map(([t0, name]) =>
+      h("span", { class: "sec", style: `left:${t0 / end * 100}%`, title: `${clock(t0)} ${name}`, onclick: () => seek(t0) }, name)));
     const brushed = TL.tangents.map((T) => T.nBrushed).join(" / ");
     ui.stats.textContent = `${TL.G.stats.reached.toLocaleString()} nodes · ${TL.tangents.length} tangent${TL.tangents.length === 1 ? "" : "s"}` + (TL.tangents.length ? ` · ${brushed} struts brushed in flight` : "");
   }
@@ -673,7 +781,7 @@
     if (restored && JSON.stringify(P) !== JSON.stringify(DEFAULTS)) {
       $("#restored").hidden = false;
     }
-    try { renderer = new DomeRenderer(canvas); }
+    try { renderer = new DomeRenderer(canvas); renderer.onTexture = () => { dirty = true; }; }
     catch (e) { showError(e.message); }
     rebuild();
     // a moment worth opening on: the first comet mid-flight

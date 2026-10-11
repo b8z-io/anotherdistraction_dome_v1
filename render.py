@@ -35,6 +35,7 @@ class Renderer:
         G = self.TL.G
         self.w = res * 2 if proj == "equirect" else res
         self.h = res
+        self.ss = ss
         # Linux servers: headless EGL. Mac (CGL) / Windows (WGL): the default context.
         if sys.platform.startswith("linux"):
             self.ctx = moderngl.create_standalone_context(backend="egl")
@@ -56,12 +57,22 @@ class Renderer:
             return t
         self.textures = [tex3d(G["tex"], 0)]
         self.textures += [tex3d(pt, 1 + k) for k, pt in enumerate(self.TL.paint_tex)]
+        # the credo's typeset texture (tools/make_quote.py)
+        qimg = Image.open(ROOT / "assets" / "text" / "quote.png").convert("RGBA")
+        self.qmeta = json.loads((ROOT / "assets" / "text" / "quote.json").read_text())
+        qt = self.ctx.texture(qimg.size, 4, qimg.tobytes())
+        qt.build_mipmaps()
+        qt.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+        qt.use(9)
+        self.textures.append(qt)
 
         o, L, S, look, R, C = P["output"], P["lattice"], P["seed_point"], P["look"], P["render"], P["camera"]
         PT = P["paint"]
         pad8 = lambda xs, fill=0.0: list(xs) + [fill] * (8 - len(xs))
         Tn = self.TL.tangents
-        cols = [tuple(T["color"]) for T in Tn] + [(0.0, 0.0, 0.0)] * (8 - len(Tn))
+        cols = [(*T["color"], T["launch_s"]) for T in Tn] + [(0.0, 0.0, 0.0, 1e9)] * (16 - len(Tn))
+        self.spA = [(T["land_s"], math.radians(T["hue_spread_deg"]), T["hue_time_s"]) for T in Tn]
+        sh = P.get("show", {})
         static = {
             "uRes": (self.w, self.h),
             "uProj": 1 if proj == "equirect" else 0,
@@ -70,13 +81,14 @@ class Renderer:
             "uVoidIn": C["void_inner"], "uVoidOut": C["void_outer"],
             "uLatRot": mat(G["rot"]),
             "uCell": L["cell"], "uStrutR": L["strut_radius"], "uNodeR": L["node_radius"],
-            "uGraph": 0, "uPaint0": 1, "uPaint1": 2, "uPaint2": 3, "uPaint3": 4,
+            "uGraph": 0, **{f"uPaint{k}": 1 + k for k in range(8)},
             "uGridH": G["H"], "uExtent": L["extent"], "uXDelay": L["crosslink_delay"],
             "uSeedPos": tuple(G["stats"]["root_world"]), "uStarSize": S["star_size_rad"],
             "uNumT": len(Tn), "uSpCol": cols,
-            "uLandT": pad8([T["land_s"] for T in Tn]),
-            "uHueSpread": pad8([math.radians(T["hue_spread_deg"]) for T in Tn]),
-            "uHueTime": pad8([T["hue_time_s"] for T in Tn], 1.0),
+            "uFocusIdx": int(sh.get("focus_tangent", -1)),
+            "uText": 9, "uTextSize": tuple(self.qmeta["size"]),
+            "uNovaT": P.get("nova", {}).get("t", 1e9), "uNovaHue": P.get("nova", {}).get("hue_per_path", 0.0),
+            "uNovaLevel": P.get("nova", {}).get("level", 0.6),
             "uSoftT": PT["fade_in_s"], "uPulseT": PT["pulse_s"], "uTintAmt": PT["tint_amount"],
             "uHueJitter": math.radians(PT["hue_jitter_deg"]), "uVivid": PT["vivid"],
             "uColDeep": tuple(look["col_deep"]), "uColStrut": tuple(look["col_strut"]),
@@ -89,12 +101,31 @@ class Renderer:
                 self.prog[k].value = v
 
     def uniforms(self, t):
-        TL = self.TL
+        TL, P = self.TL, self.P
         cam, R = TL.camera(t)
         u = {"uFront": TL.front(t), "uStar": TL.star(t),
              "uCamPos": tuple(cam), "uCamRot": mat(R)}
         u["uTime"] = t
-        u["uSpPulse"] = [TL.pulse(T, t) for T in TL.tangents] + [0.0] * (8 - len(TL.tangents))
+        u["uSpA"] = [(*a, TL.pulse(T, t)) for a, T in zip(self.spA, TL.tangents)] + [(0.0, 0.0, 1.0, 0.0)] * (16 - len(TL.tangents))
+        u["uSpB"] = [(*T.get("fade_s", [0.0, 0.0]), 0.0, 0.0) for T in TL.tangents] + [(0.0, 0.0, 0.0, 0.0)] * (16 - len(TL.tangents))
+        u["uMaster"] = TL.master(t)
+        u["uLatLevel"] = TL.lattice_level(t)
+        u["uShell"] = (*TL.shell(t), 0.0)
+        Q = P.get("quote")
+        card, ca, cr = TL.quote(t)
+        if Q and card >= 0:
+            rad = math.radians(Q["deg_per_px"])
+            rect, crect = self.qmeta["cards"][card], self.qmeta["credit"]
+            az, el = Q["dir"]
+            drop = math.degrees((rect[3] / 2 + crect[3] / 2) * rad) + Q["credit_gap_deg"]
+            screen = math.radians(P["output"]["fov_deg"]) / self.h / max(self.ss, 1)
+            u.update({"uTextRect": tuple(rect), "uCreditRect": tuple(crect),
+                      "uTextDir": tuple(tl.dir_from(az, el)), "uCreditDir": tuple(tl.dir_from(az, el - drop)),
+                      "uTextAlpha": (ca, cr), "uTextRad": rad, "uTextLod": max(0.0, math.log2(screen / rad)),
+                      "uTextCol": tuple(c * Q["level"] for c in Q["color"]), "uTextHalo": Q["halo"]})
+        else:
+            u["uTextAlpha"] = (0.0, 0.0)
+        u["uFocus"] = TL.focus(t)
         rib = np.zeros((4 * 24, 4), np.float32)
         ribcol = [(0.0, 0.0, 0.0, 0.0)] * 4
         flash = [(0.0, 0.0, 0.0, 0.0)] * 8
@@ -115,6 +146,17 @@ class Renderer:
             if f > 0.01 and fslot < 8:
                 flash[fslot] = (*T["land"], f)
                 flashcol[fslot] = (*T["color"], T["flash_size"])
+                fslot += 1
+        m = TL.meteor(t)
+        if m is not None and slot < 4:
+            M = P["meteor"]
+            rib[slot * 24:(slot + 1) * 24, :3] = m[0]
+            rib[slot * 24:(slot + 1) * 24, 3] = m[1]
+            ribcol[slot] = (*M["color"], M["width"])
+            slot += 1
+            if fslot < 8:
+                flash[fslot] = (*m[0][-1], M["head_glow"] * m[1][-1] / max(M["intensity"], 1e-6))
+                flashcol[fslot] = (*M["color"], M["head_size"])
                 fslot += 1
         u.update({"uNumRib": slot, "uRib": [tuple(x) for x in rib], "uRibCol": ribcol,
                   "uFlash": flash, "uFlashCol": flashcol})

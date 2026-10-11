@@ -159,9 +159,9 @@ def paint_field(G, land_node, land_t, speed, limit, brushed, brush_speed, brush_
 
 
 def pack_paint(fields, N):
-    """[(arrival, cover), ...] for up to 8 tangents -> 4 RGBA textures (2 tangents each)."""
+    """[(arrival, cover), ...] for up to 16 tangents -> 8 RGBA textures (2 tangents each)."""
     texs = []
-    for k in range(4):
+    for k in range(8):
         t = np.zeros((N, N, N, 4), np.float32)
         t[..., 0] = t[..., 2] = -1.0
         for j in range(2):

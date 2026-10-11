@@ -60,6 +60,9 @@ header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: cente
 #marks { position: absolute; left: 8px; right: 8px; top: -6px; height: 6px; pointer-events: none; }
 .mk { position: absolute; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; border: 2px solid var(--c); }
 .mk.land { background: var(--c); }
+#sections { position: relative; height: 16px; margin: 0 8px; }
+.sec { position: absolute; top: 2px; padding-left: 4px; border-left: 1px solid var(--line); font: 10px var(--f-num); color: var(--muted); white-space: nowrap; cursor: pointer; }
+.sec:hover { color: var(--fg); }
 .viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; color: var(--muted); font-size: 13px; }
 .viewbar label { display: inline-flex; align-items: center; gap: 5px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -174,7 +177,7 @@ body.showhelp .help { display: block; }
       <button type="button" id="back" title="Back 5 s (Shift ←)" aria-label="Back 5 seconds">−5s</button>
       <button type="button" id="fwd" title="Forward 5 s (Shift →)" aria-label="Forward 5 seconds">+5s</button>
       <div class="clock"><b id="time">0:00.0</b> <span>/ <span id="endt">1:30.0</span></span></div>
-      <div class="track"><div id="marks"></div><input type="range" id="scrub" min="0" max="90" step="0.0333" value="0" aria-label="Time"></div>
+      <div class="track"><div id="marks"></div><input type="range" id="scrub" min="0" max="90" step="0.0333" value="0" aria-label="Time"><div id="sections"></div></div>
       <label class="switch"><input type="checkbox" id="loop" checked> Loop</label>
     </div>
     <div class="viewbar">
@@ -211,6 +214,8 @@ body.showhelp .help { display: block; }
 </div>
 
 <script type="application/json" id="params-default">__PARAMS__</script>
+<script type="application/json" id="quote-meta">__QMETA__</script>
+<script type="text/plain" id="quote-png">__QPNG__</script>
 <script type="x-shader/x-fragment" id="frag-src">__SHADER__</script>
 <script>
 __CORE__

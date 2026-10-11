@@ -48,6 +48,17 @@ def pchip(keys, t):
     return h00 * ys[i] + h10 * h[i] * m[i] + h01 * ys[i + 1] + h11 * h[i] * m[i + 1]
 
 
+def lerp_keys(keys, t):
+    """Straight lines between [[t, v], ...] — for cuts: two keys close together make a hard edge."""
+    ks = sorted(keys)
+    if t <= ks[0][0]:
+        return ks[0][1]
+    for (t0, v0), (t1, v1) in zip(ks, ks[1:]):
+        if t <= t1:
+            return v0 + (v1 - v0) * (t - t0) / (t1 - t0) if t1 > t0 else v1
+    return ks[-1][1]
+
+
 def smooth(x):
     x = min(max(x, 0.0), 1.0)
     return x * x * (3 - 2 * x)
@@ -104,8 +115,8 @@ class Timeline:
         self.P = P
         self.G = lattice.build(P)
         self.tangents = [self._resolve_tangent(i, T) for i, T in enumerate(P.get("tangents", []))]
-        if len(self.tangents) > 8:
-            raise ValueError("at most 8 tangents (shader limit)")
+        if len(self.tangents) > 16:
+            raise ValueError("at most 16 tangents (shader limit)")
         fields = [self._paint(T) for T in self.tangents]
         self.paint_tex = lattice.pack_paint(fields, self.G["N"])
 
@@ -117,7 +128,83 @@ class Timeline:
     def star(self, t):
         s = self.P["seed_point"]
         a, b = s["star_fade_in_s"]
-        return s["star_intensity"] * smooth((t - a) / max(b - a, 1e-6))
+        k = lerp_keys(s["star_keys"], t) if s.get("star_keys") else 1.0
+        return s["star_intensity"] * smooth((t - a) / max(b - a, 1e-6)) * k
+
+    def master(self, t):
+        """Overall level of picture and sound: 0 = black and silent."""
+        k = self.P.get("show", {}).get("master_keys")
+        return lerp_keys(k, t) if k else 1.0
+
+    def audio(self, t):
+        """Overall level of the sound alone (the held breath before the supernova)."""
+        k = self.P.get("show", {}).get("audio_keys")
+        return lerp_keys(k, t) if k else 1.0
+
+    def lattice_level(self, t):
+        """Brightness of the lattice alone — the afterglow cooling and going out."""
+        k = self.P.get("show", {}).get("lattice_keys")
+        return lerp_keys(k, t) if k else 1.0
+
+    def shell(self, t):
+        """The supernova's shock shell: (radius, width, brightness)."""
+        N = self.P.get("nova")
+        if not N or t < N["t"]:
+            return 0.0, 1.0, 0.0
+        dt = t - N["t"]
+        return N["shell_speed"] * dt, N["shell_width"], N["intensity"] * math.exp(-dt / N["decay_s"])
+
+    # ---- the credo
+    def quote(self, t):
+        """(card index or -1, card opacity, credit opacity) at time t."""
+        Q = self.P.get("quote")
+        if not Q:
+            return -1, 0.0, 0.0
+        f = Q["fade_s"]
+        for i, c in enumerate(Q["cards"]):
+            if c["in"] <= t <= c["out"]:
+                a = min(smooth((t - c["in"]) / f), 1 - smooth((t - c["out"] + f * 2.5) / (f * 2.5)))
+                last = Q["cards"][-1]
+                cr = 0.0
+                if i == len(Q["cards"]) - 1:
+                    cr = min(smooth((t - Q["credit_in"]) / (f * 1.5)), 1 - smooth((t - last["out"] + f * 2.5) / (f * 2.5)))
+                return i, a, cr
+        return -1, 0.0, 0.0
+
+    # ---- the closing meteor
+    def meteor(self, t, k=24):
+        M = self.P.get("meteor")
+        if not M or not (M["t"] <= t <= M["t"] + M["dur"]):
+            return None
+        cam, R = self.camera(M["t"])
+        a, b = dir_from(*M["from_dir"]), dir_from(*M["to_dir"])
+        om = math.acos(min(max(float(a @ b), -1.0), 1.0))
+        def slerp(s):
+            return (math.sin((1 - s) * om) * a + math.sin(s * om) * b) / math.sin(om)
+        u = (t - M["t"]) / M["dur"] * (1 + M["trail"])
+        head, tail = min(u, 1.0), min(max(u - M["trail"], 0.0), 1.0)
+        if head - tail < 1e-4:
+            return None
+        env = smooth(u / 0.25) * (1 - smooth((u - 1.0) / M["trail"]))
+        s = np.linspace(tail, head, k)
+        pts = np.array([cam + R @ slerp(x) * M["dist"] for x in s])
+        inten = np.linspace(0, 1, k) ** 1.6 * M["intensity"] * env
+        return pts, inten
+
+    def focus(self, t):
+        """Hyperfocus: 0..1, dims everything except one tangent's colour."""
+        k = self.P.get("show", {}).get("focus_keys")
+        return min(max(pchip(k, t), 0.0), 1.0) if k else 0.0
+
+    def end(self):
+        """Length of the piece."""
+        sh = self.P.get("show", {})
+        if "end_s" in sh:
+            return sh["end_s"]
+        last = lambda keys: max(k[0] for k in keys)
+        C = self.P["camera"]
+        return max([last(self.P["growth"]["front_keys"]), last(C["y_keys"]), last(C["yaw_keys"])]
+                   + [T["land_s"] + T["absorb_s"] + 6 for T in self.tangents])
 
     def camera(self, t):
         C = self.P["camera"]

@@ -1,10 +1,14 @@
 # Another Distraction — fulldome piece
 
-A generative fulldome film about attention. A calm, ordered lattice grows
-across the dome; bright tangents keep breaking away and pulling the eye off
-somewhere else — and every tangent comes back carrying something new. By
-the end, the structure is built out of everything that "pulled away".
-The detours are the design.
+A generative fulldome film about attention, about 4:49 long. A calm, ordered
+lattice grows across the dome; bright comets keep breaking away and pulling
+the eye off somewhere else, and every one comes back carrying a new colour.
+The distractions build to overload; then everything is pulled into the seed
+star, a held breath, and a supernova: the lattice bursts back out in every
+colour at once. Over the afterglow, Jack London's Credo — "I would rather be
+a superb meteor, every atom of me in magnificent glow, than a sleepy and
+permanent planet" — in light and in Batesy's voice. Then black, silence,
+and one last meteor.
 
 Rendered straight into a **180° equidistant (azimuthal) fisheye
 domemaster**: centre of frame = zenith, bottom of frame = front of the
@@ -71,6 +75,9 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `params.json` | Every knob for the piece. |
 | `timeline.py` | The shared timeline: growth front, camera pose, tangent ribbons, landing flashes, colour spread — all pure functions of time. |
 | `score.py` | The procedural soundtrack, generated from the timeline: stereo mix, AmbiX (first-order ambisonics) for dome speaker arrays, and stems. |
+| `tools/make_quote.py` | Typesets the credo cards into `assets/text/quote.png` (glyphs + legibility halo) for the dome and the playground. |
+| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4): four takes, take 2 split into one clip per card (`lines.json` records provenance and durations). |
+| `assets/fonts/` | EB Garamond (SIL Open Font License, see `OFL.txt`). |
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
 | `render.py` | Headless renderer: contact sheets, image sequences, VR previews. |
@@ -143,14 +150,21 @@ existing sequence for Resolve.
 
 * `mix_stereo.wav` — the stereo mix (24-bit / 48 kHz).
 * `mix_ambix.wav` — first-order ambisonics (AmbiX: ACN/SN3D, W Y Z X), for decoding to a dome's speaker array. Directions are relative to the audience's front, so it follows the camera's turn.
-* `stem_drone.wav`, `stem_pings.wav`, `stem_paint.wav`, `stem_tangents.wav`, `stem_reverb.wav` — they sum to the stereo mix; use them to rebalance in Resolve.
+* `stem_drone.wav`, `stem_pings.wav`, `stem_paint.wav`, `stem_tangents.wav`, `stem_nova.wav`, `stem_voice.wav`, `stem_reverb.wav` — they sum to the stereo mix; use them to rebalance in Resolve.
 
 What you hear:
 
 * **Drone** (D/A) — the lattice. Its upper partials open as it grows; a faint high D is the seed star.
 * **Pings** — every node that switches on rings a soft bell in D pentatonic, pitched by its height on the dome and panned to where it is. Early on you hear single notes; by 45s it's a shimmer.
 * **Paint** — every strut a tangent paints chimes in that tangent's chord as the colour reaches it, so the harmony shifts as the colour spreads.
-* **Tangents** — each one's motif starts `precue_s` *before* the ribbon appears, from where it will emerge — the ears get distracted first — then follows the ribbon round the dome, with a whoosh that rides its speed. Landing: a chord blooms where it touches down, with a low thump. A warm pad in that chord then holds for as long as its colour stays in the lattice.
+* **Tangents** — each one's motif starts `precue_s` *before* the ribbon appears, from where it will emerge — the ears get distracted first — then follows the ribbon round the dome, with a whoosh that rides its speed. Landing: a chord blooms where it touches down, with a low thump. A warm pad in that chord then holds and slowly fades.
+* **Hyperfocus** — a steady arpeggio locks in and circles the dome.
+* **Overload** — a rising band of air builds toward the supernova.
+* **The inhale** — the supernova chord, reversed, swells into the star with air rushing inward; everything before it is pulled away.
+* **The held breath** — half a second of true silence.
+* **The supernova** — one huge D major chord, a boom and a crash, and every regrowing strut chiming in the chord of the comet that painted it.
+* **The credo** — Batesy's voice, one clip per card; the drone steps back while it speaks.
+* **The meteor** — one last whoosh and a single note, in silence.
 
 An AI music bed (ElevenLabs Music / video-to-music) can sit under this later;
 the procedural layer is the part that's locked to picture.
@@ -232,6 +246,35 @@ holds its first/last value outside the range.
 * `pings` — `level` (growth). `paint` — `level` (chimes as colour reaches each strut).
 * `reverb_send` (per layer), `reverb_level`, `master_peak_db`.
 
+**Linear keyframes.** `show.master_keys`, `show.audio_keys`, `show.lattice_keys` and `seed_point.star_keys` use straight lines between keys instead, so two keys close together make a hard edge.
+
+**`show`** — the arc of the whole piece
+* `end_s` — length of the piece. `sections` — names for the timeline (shown in the playground).
+* `lattice_keys` — brightness of the lattice alone: the afterglow cooling and going out.
+* `focus_keys`, `focus_tangent` — hyperfocus (0–1): everything dims except that comet's colour.
+* `master_keys` — overall picture and sound level. `audio_keys` — sound only (the held breath).
+
+**`seed_point.star_keys`** — multiplies the star's brightness: it flares as everything is pulled in, bursts at the supernova, then goes out.
+
+**`tangents[].fade_s`** — `[start, length]`: the comet's colour drains away (the hyperfocus flood receding). Leave out to keep it.
+
+**`nova`** — the supernova. Pair it with `growth.front_keys`: the front drops to 0 just before (the inhale, everything retracting into the star) and races back out after.
+* `t` — the burst. `shell_speed`, `shell_width`, `intensity`, `decay_s` — the rainbow shock ring sweeping out over the audience.
+* `level`, `hue_per_path` — after the burst the lattice wears every colour, in rings out from the star (the comets' own colours sit on top).
+
+**`quote`** — the credo
+* `cards` — one per sentence: `rows` (re-run `tools/make_quote.py` after editing), `in` / `out` (card fades in, gone by), `voice` + `voice_at` (the clip and when it starts).
+* `dir` — where on the dome (az, el). `deg_per_px` — text size. `color`, `level`, `halo` (darkens what's behind the words), `fade_s`.
+* `credit`, `credit_in`, `credit_gap_deg` — "— Jack London" under the last card.
+
+**`meteor`** — the last distraction: `t`, `dur`, `from_dir`, `to_dir`, `dist`, `color`, `width`, `trail`, `intensity`, `head_glow`, `head_size`; `note`, `level` for its sound.
+
+**`score`** (additions)
+* `pad_decay_s` — comet pads fade over this long.
+* `pulse` — hyperfocus arpeggio: `start`, `end`, `bpm`, `notes`, `level`. `riser` — overload: `start`, `end`, `level`.
+* `inhale` — `start`, `end`, `level`. `nova` — `chord`, `level`, `decay_s`, `boom_level`. `regrow_chime_level`.
+* `voice` — `level`, `duck` (how far the drone dips under it), `reverb_send`.
+
 **`render`**
 * `steps`, `far` — raymarch quality limits. Rarely need touching.
 
@@ -239,11 +282,14 @@ holds its first/last value outside the range.
 
 | # | Section | Time | Status |
 |---|---|---|---|
-| 1 | **Seed** — star at the zenith grows into a cool, ordered lattice | 0:00–0:45 | ✅ v2 |
-| 2 | **First tug** — sound cue first, then a bright comet breaks away toward the horizon, painting struts as it passes, and lands in a burst of colour that spreads through the lattice; the audience starts to rise | 0:45–1:30 | ✅ v2 |
-| 3 | **Escalation + hyperfocus** — competing threads; then everything snaps to one tangent that blooms to fill the dome (flow, as joy) | 1:30–3:00 | — |
-| 4 | **Overload → darkness** — too many threads, then a hard cut to black and silence | 3:00–3:45 | — |
-| 5 | **Rebuild** — the lattice regrows from every colour the tangents brought back | 3:45–5:00 | — |
+| 1 | **Seed** — a star at the zenith grows into a cool, ordered lattice | 0:00–0:45 | ✅ |
+| 2 | **First tug** — sound first, then a gold comet breaks away behind the audience, paints struts as it passes and lands in a burst of colour; the audience starts to rise | 0:45–1:30 | ✅ |
+| 3 | **Escalation** — six more comets, each a new colour, arriving closer and closer together | 1:30–2:30 | ✅ |
+| 4 | **Hyperfocus** — one comet lands near the zenith and floods the whole lattice with a full-spectrum wave; everything else dims; a pulse locks in; the flood recedes as focus breaks | 2:30–3:00 | ✅ |
+| 5 | **Overload** — seven fast comets, growth surging, a riser building | 3:00–3:38 | ✅ |
+| 6 | **Supernova** — the inhale (everything retracts into the star), a held breath, then the burst: a rainbow shock ring sweeps over the audience and the lattice regrows in every colour at once | 3:38–3:48 | ✅ |
+| 7 | **Credo** — Jack London's Credo, card by card, in light and in Batesy's voice, over the cooling afterglow | 3:48–4:39 | ✅ |
+| 8 | **Meteor** — black, silence, one last meteor | 4:39–4:49 | ✅ |
 
 Visual grammar: the lattice is slow, orthogonal and ordered; tangents are
 fast, fluid, bright ribbons. Sound: a drone under the lattice, one motif per
@@ -259,6 +305,7 @@ tangent, panned to where it appears on the dome (separate stems).
 
 ## Version history
 
+* **Full piece v1** — sections 3–8: up to 16 comets with distinct hues, hyperfocus flood + focus dimming, overload, the supernova ending (inhale, held breath, shock ring, every-colour regrowth), the credo in light with Batesy's narration, afterglow, the closing meteor; matching score; playground covers all of it.
 * **Seed v1** — stateless hash-driven lattice. Issues: ~14s of dead air before growth, orphan fragments floating unconnected, flat white look.
 * **Playground** — browser preview with every setting exposed; tangent paths now use uniform rather than Gaussian jitter (identical in Python and JS), so comet routes shifted very slightly from the v2 preview.
 * **First tug v2** — brighter comets (white-hot core, saturated halo, glowing head), a different vivid colour per tangent (gold, magenta), ribbons paint struts they brush past in flight, bigger multi-hued stains that drift within each colour's family, paint chimes in each tangent's chord.
