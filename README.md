@@ -156,6 +156,8 @@ mid-piece.
 Or add `--movie [h264|hevc|prores]` to any `render.py --range` run. Resolve
 can also import a frame folder directly as an image sequence.
 
+`--resume` skips frames already in the output folder, so a long render that gets interrupted just carries on when you re-run the same command.
+
 Frames are named by frame number at the project fps (`frame_01350.png` =
 45.0s at 30fps), so partial renders and re-renders slot straight into an
 existing sequence for Resolve.

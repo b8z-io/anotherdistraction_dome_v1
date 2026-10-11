@@ -274,6 +274,8 @@ def main():
                     help="after a --range render, stitch the frames into a movie (default h264)")
     ap.add_argument("--audio", help="with --movie/--stream: soundtrack to lay in (e.g. score/mix_stereo.wav)")
     ap.add_argument("--fps", type=float, help="override output.fps (e.g. 60)")
+    ap.add_argument("--resume", action="store_true",
+                    help="with --range: skip frames already in --out, so an interrupted render picks up where it stopped")
     ap.add_argument("--stream", metavar="MOVIE",
                     help="with --range: pipe frames straight into this movie file, no PNGs on disk "
                          "(codec from --movie, default hevc). For 4K+: a PNG per frame is ~15 MB.")
@@ -297,6 +299,12 @@ def main():
         stream_movie(r, times, a.stream, P["output"]["fps"], a.movie or "hevc", a.audio)
         return
 
+    if a.resume and not a.sheet:
+        fps_ = P["output"]["fps"]
+        todo = [t for t in times if not (Path(a.out) / f"frame_{int(round(t * fps_)):05d}.png").exists()]
+        print(f"resume: {len(times) - len(todo)} frames already done, {len(todo)} to go", flush=True)
+        times = todo
+
     imgs = []
     os.makedirs(a.out, exist_ok=True)
     t0 = time.time()
@@ -306,7 +314,9 @@ def main():
             imgs.append(im)
         else:
             frame_no = int(round(t * P["output"]["fps"]))
-            im.save(Path(a.out) / f"frame_{frame_no:05d}.png")
+            dst = Path(a.out) / f"frame_{frame_no:05d}.png"
+            im.save(dst.with_suffix(".tmp.png"))
+            os.replace(dst.with_suffix(".tmp.png"), dst)       # never leave a half-written frame behind
         print(f"t={t:6.2f}s  {time.time() - t0:6.1f}s elapsed", flush=True)
     if a.sheet:
         contact_sheet(imgs, [f"{t:.1f}s" for t in times], a.sheet, a.cols)
