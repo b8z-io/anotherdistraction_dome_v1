@@ -1376,6 +1376,7 @@
   },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
+    "font": "assets/fonts/EBGaramond.ttf",
     "font_weight": 500,
     "dir": [
       0,

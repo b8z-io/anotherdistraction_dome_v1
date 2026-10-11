@@ -2,7 +2,7 @@
 """Typeset the quote cards into one texture for the dome.
 
 Reads params.json -> quote.cards (lists of rows) and quote.credit, renders
-each card centred in EB Garamond, and writes:
+each card centred in the quote.font typeface (EB Garamond by default), and writes:
   assets/text/quote.png   R = glyphs, G = soft halo (darkens what's behind
                           the words so they stay legible over the lattice)
   assets/text/quote.json  each card's rectangle in the texture, in pixels
@@ -24,27 +24,38 @@ PAD = 40           # room for the halo
 W = 2048
 
 
-def font(px, weight):
-    f = ImageFont.truetype(str(FONT), px)
-    try:
-        f.set_variation_by_axes([weight])
+def font(px, weight, path=FONT):
+    f = ImageFont.truetype(str(path), px)
+    try:                                   # variable font: set the weight axis, leave the others at default
+        axes = f.get_variation_axes()
+        name = lambda a: a["name"].decode() if isinstance(a["name"], bytes) else a["name"]
+        f.set_variation_by_axes([weight if name(a).lower() == "weight" else a["default"] for a in axes])
     except Exception:
         pass
     return f
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--font", help="override quote.font (a .ttf path)")
+    a = ap.parse_args()
     P = json.loads((ROOT / "params.json").read_text())
     Q = P["quote"]
     weight = Q.get("font_weight", 500)
+    path = Path(a.font) if a.font else ROOT / Q.get("font", str(FONT.relative_to(ROOT)))
     blocks = [(c["rows"], PX) for c in Q["cards"]] + [([Q["credit"]], int(PX * 0.62))]
     heights = [len(rows) * int(px * 1.32) + 2 * PAD for rows, px in blocks]
     H = (sum(heights) + 3) // 4 * 4
+    # wide faces get a wider texture rather than smaller words
+    probe = ImageDraw.Draw(Image.new("L", (1, 1)))
+    need = max(probe.textlength(r, font=font(px, weight, path)) for rows, px in blocks for r in rows) + 2 * PAD
+    W = max(globals()["W"], int(need + 8 + 3) // 4 * 4)
     img = Image.new("L", (W, H), 0)
     d = ImageDraw.Draw(img)
     rects, y = [], 0
     for (rows, px), h in zip(blocks, heights):
-        f = font(px, weight)
+        f = font(px, weight, path)
         widths = [d.textlength(r, font=f) for r in rows]
         wmax = int(max(widths)) + 2 * PAD
         x0 = (W - wmax) // 2
@@ -58,7 +69,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     rgba.save(out / "quote.png", optimize=True)
     (out / "quote.json").write_text(json.dumps({"size": [W, H], "px": PX, "cards": rects[:-1], "credit": rects[-1]}, indent=1))
-    print(f"{out / 'quote.png'}  {W}x{H}, {len(rects) - 1} cards + credit")
+    print(f"{out / 'quote.png'}  {W}x{H}, {len(rects) - 1} cards + credit, {path.name}")
 
 
 if __name__ == "__main__":

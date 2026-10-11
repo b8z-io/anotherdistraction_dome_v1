@@ -209,6 +209,8 @@ the procedural layer is the part that's locked to picture.
 * `vfov_deg` — vertical field of view of the equidistant fisheye (120).
 * `text_scale` — credo size relative to the dome (0.72 keeps the widest card clear of Instagram's side buttons).
 
+**`quote.font`** — the credo typeface (a .ttf under `assets/fonts/`; variable fonts use `font_weight`). Twelve OFL options ship in `assets/fonts/`, compared in `previews/font_options.png`: EB Garamond (default), Cormorant Garamond, Libre Baskerville, Lora, Fraunces, Playfair Display, Cinzel, Josefin Sans, Jost, Montserrat, Raleway, Space Grotesk. Change it, then run `python tools/make_quote.py` (and `tools/build_playground.py` for the playground).
+
 **`lattice`** — the ordered structure
 * `cell` — spacing between lattice nodes (world units; the audience is at the origin).
 * `site_density` — fraction of lattice sites that can grow (lower = sparser, more elegant).
