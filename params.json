@@ -708,7 +708,7 @@
       "head_size": 0.5,
       "flash_size": 1.4,
       "pulse": 3.5,
-      "hue_time_s": 16.0,
+      "hue_time_s": 7.0,
       "precue_s": 2.0,
       "name": "flow",
       "launch_s": 148,
@@ -1229,13 +1229,14 @@
         "A5",
         "D6"
       ],
-      "level": 0.3,
+      "level": 0.5,
       "decay_s": 16.0,
-      "boom_level": 0.35
+      "boom_level": 0.5
     },
     "voice": {
-      "level": 0.9,
-      "reverb_send": 0.2
+      "level": 1.8,
+      "reverb_send": 0.2,
+      "duck": 0.4
     }
   },
   "paint": {
@@ -1298,8 +1299,12 @@
         1
       ],
       [
+        223.5,
+        0.85
+      ],
+      [
         227,
-        0.9
+        0.7
       ],
       [
         234,
@@ -1469,7 +1474,8 @@
     "shell_width": 0.5,
     "intensity": 4.0,
     "decay_s": 2.2,
-    "hue_per_path": 0.035
+    "hue_per_path": 0.09,
+    "level": 0.6
   },
   "meteor": {
     "t": 283.5,

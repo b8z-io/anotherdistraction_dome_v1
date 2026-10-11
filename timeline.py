@@ -136,6 +136,61 @@ class Timeline:
         k = self.P.get("show", {}).get("master_keys")
         return lerp_keys(k, t) if k else 1.0
 
+    def audio(self, t):
+        """Overall level of the sound alone (the held breath before the supernova)."""
+        k = self.P.get("show", {}).get("audio_keys")
+        return lerp_keys(k, t) if k else 1.0
+
+    def lattice_level(self, t):
+        """Brightness of the lattice alone — the afterglow cooling and going out."""
+        k = self.P.get("show", {}).get("lattice_keys")
+        return lerp_keys(k, t) if k else 1.0
+
+    def shell(self, t):
+        """The supernova's shock shell: (radius, width, brightness)."""
+        N = self.P.get("nova")
+        if not N or t < N["t"]:
+            return 0.0, 1.0, 0.0
+        dt = t - N["t"]
+        return N["shell_speed"] * dt, N["shell_width"], N["intensity"] * math.exp(-dt / N["decay_s"])
+
+    # ---- the credo
+    def quote(self, t):
+        """(card index or -1, card opacity, credit opacity) at time t."""
+        Q = self.P.get("quote")
+        if not Q:
+            return -1, 0.0, 0.0
+        f = Q["fade_s"]
+        for i, c in enumerate(Q["cards"]):
+            if c["in"] <= t <= c["out"]:
+                a = min(smooth((t - c["in"]) / f), 1 - smooth((t - c["out"] + f * 2.5) / (f * 2.5)))
+                last = Q["cards"][-1]
+                cr = 0.0
+                if i == len(Q["cards"]) - 1:
+                    cr = min(smooth((t - Q["credit_in"]) / (f * 1.5)), 1 - smooth((t - last["out"] + f * 2.5) / (f * 2.5)))
+                return i, a, cr
+        return -1, 0.0, 0.0
+
+    # ---- the closing meteor
+    def meteor(self, t, k=24):
+        M = self.P.get("meteor")
+        if not M or not (M["t"] <= t <= M["t"] + M["dur"]):
+            return None
+        cam, R = self.camera(M["t"])
+        a, b = dir_from(*M["from_dir"]), dir_from(*M["to_dir"])
+        om = math.acos(min(max(float(a @ b), -1.0), 1.0))
+        def slerp(s):
+            return (math.sin((1 - s) * om) * a + math.sin(s * om) * b) / math.sin(om)
+        u = (t - M["t"]) / M["dur"] * (1 + M["trail"])
+        head, tail = min(u, 1.0), min(max(u - M["trail"], 0.0), 1.0)
+        if head - tail < 1e-4:
+            return None
+        env = smooth(u / 0.25) * (1 - smooth((u - 1.0) / M["trail"]))
+        s = np.linspace(tail, head, k)
+        pts = np.array([cam + R @ slerp(x) * M["dist"] for x in s])
+        inten = np.linspace(0, 1, k) ** 1.6 * M["intensity"] * env
+        return pts, inten
+
     def focus(self, t):
         """Hyperfocus: 0..1, dims everything except one tangent's colour."""
         k = self.P.get("show", {}).get("focus_keys")

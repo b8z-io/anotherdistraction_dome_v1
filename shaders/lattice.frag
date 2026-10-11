@@ -63,6 +63,7 @@ uniform float uMaster;      // overall picture level: 0 = black
 uniform float uLatLevel;    // brightness of the lattice alone (the afterglow fading)
 uniform float uNovaT;       // the supernova: from this time the lattice wears every colour
 uniform float uNovaHue;     // ...hue turns this many radians per path unit out from the star
+uniform float uNovaLevel;   // ...at this brightness
 uniform vec4  uShell;       // its shock shell: radius, width, brightness (0 = none)
 
 // ---- the credo, in light (camera frame; texture: R glyphs, G halo)
@@ -155,10 +156,10 @@ vec4 spreadAt(vec3 id, out vec3 emis) {
     ivec3 g = gridOf(id);
     if (!inGrid(g)) return acc;
     if (uTime >= uNovaT) {                       // after the supernova: every colour at once
+        // rings of colour travelling out from the star, broken up node by node
         float dn = texelFetch(uGraph, g, 0).r;
-        vec3 w = transpose(uLatRot) * (id * uCell) - uSeedPos;
-        float ang = dn * uNovaHue + atan(w.x, w.z) + (hash31(id * 2.11) - 0.5) * uHueJitter;
-        acc = vec4(hueRot(vec3(1.0, 0.22, 0.08), ang), 1.0);
+        float ang = dn * uNovaHue + (hash31(id * 2.11) - 0.5) * 3.0;
+        acc = vec4(hueRot(vec3(1.0, 0.22, 0.08), ang) * uNovaLevel, 1.0);
     }
     if (uNumT == 0) return acc;
     for (int t = 0; t < 8; t++) {
@@ -328,8 +329,8 @@ vec3 shell(vec3 ro, vec3 rd) {
             float t = -b + (k == 0 ? -sh : sh);
             if (t <= 0.0) continue;
             vec3 n = normalize(ro + rd * t - uSeedPos);
-            float edge = min(w / max(abs(dot(n, rd)), 0.06), 8.0 * w) / w;   // limb-brightened
-            col += hueRot(vec3(1.0, 0.3, 0.1), atan(n.x, n.z) + n.y * 2.0) * edge * 0.25;
+            float edge = min(1.0 / max(abs(dot(n, rd)), 0.06), 8.0) - 1.0;   // ~0 face-on, bright at the limb
+            col += hueRot(vec3(1.0, 0.3, 0.1), atan(n.x, n.z) + n.y * 2.0) * edge * edge * 0.04;
         }
     }
     return col * uShell.z;
