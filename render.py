@@ -9,6 +9,7 @@ Examples
   python render.py --range 0 45 --res 1024 --out frames/seed       # sequence
   python render.py --range 0 45 --res 4096 --ss 2 --out frames/4k  # final-ish
   python render.py --times 30 --proj equirect --res 2048           # VR preview
+  python render.py --range 176 289 --proj reel --res 1280 --out frames/reel   # 9:16 phone cut (720x1280)
   python render.py --range 0 45 --res 512 --out frames/seed --movie   # frames + seed.mp4
 """
 import argparse, json, math, os, sys, time
@@ -28,13 +29,22 @@ def mat(m):
     return tuple(np.asarray(m, float).T.flatten())
 
 
+def o_fov(P):
+    return P["output"]["fov_deg"]
+
+
 class Renderer:
     def __init__(self, P, res, proj, ss, params_path):
         self.P = P
         self.TL = tl.load(str(Path(params_path).resolve()))
         G = self.TL.G
-        self.w = res * 2 if proj == "equirect" else res
+        self.proj = proj
+        reel = P.get("reel", {})
+        self.w = res * 2 if proj == "equirect" else (int(round(res * 9 / 16 / 2)) * 2 if proj == "reel" else res)
         self.h = res
+        # the angle one output pixel covers vertically (sets the text mip level)
+        self.vfov = reel.get("vfov_deg", 120) if proj == "reel" else o_fov(P)
+        self.text_scale = reel.get("text_scale", 1.0) if proj == "reel" else 1.0
         self.ss = ss
         # Linux servers: headless EGL. Mac (CGL) / Windows (WGL): the default context.
         if sys.platform.startswith("linux"):
@@ -75,8 +85,9 @@ class Renderer:
         sh = P.get("show", {})
         static = {
             "uRes": (self.w, self.h),
-            "uProj": 1 if proj == "equirect" else 0,
-            "uFov": o["fov_deg"], "uTilt": o["tilt_deg"], "uSS": ss,
+            "uProj": {"equirect": 1, "reel": 2}.get(proj, 0),
+            "uFov": reel.get("vfov_deg", 120) if proj == "reel" else o["fov_deg"],
+            "uTilt": reel.get("pitch_deg", 52) if proj == "reel" else o["tilt_deg"], "uSS": ss,
             "uSeed": float(P["seed"]),
             "uVoidIn": C["void_inner"], "uVoidOut": C["void_outer"],
             "uLatRot": mat(G["rot"]),
@@ -114,11 +125,11 @@ class Renderer:
         Q = P.get("quote")
         card, ca, cr = TL.quote(t)
         if Q and card >= 0:
-            rad = math.radians(Q["deg_per_px"])
+            rad = math.radians(Q["deg_per_px"] * self.text_scale)
             rect, crect = self.qmeta["cards"][card], self.qmeta["credit"]
             az, el = Q["dir"]
-            drop = math.degrees((rect[3] / 2 + crect[3] / 2) * rad) + Q["credit_gap_deg"]
-            screen = math.radians(P["output"]["fov_deg"]) / self.h / max(self.ss, 1)
+            drop = math.degrees((rect[3] / 2 + crect[3] / 2) * rad) + Q["credit_gap_deg"] * self.text_scale
+            screen = math.radians(self.vfov) / self.h / max(self.ss, 1)
             u.update({"uTextRect": tuple(rect), "uCreditRect": tuple(crect),
                       "uTextDir": tuple(tl.dir_from(az, el)), "uCreditDir": tuple(tl.dir_from(az, el - drop)),
                       "uTextAlpha": (ca, cr), "uTextRad": rad, "uTextLod": max(0.0, math.log2(screen / rad)),
@@ -197,7 +208,8 @@ def main():
     ap.add_argument("--range", type=float, nargs=2, metavar=("START", "END"))
     ap.add_argument("--res", type=int)
     ap.add_argument("--ss", type=int)
-    ap.add_argument("--proj", choices=["domemaster", "equirect"])
+    ap.add_argument("--proj", choices=["domemaster", "equirect", "reel"],
+                    help="reel = 9:16 phone view looking up at the dome (--res sets the height)")
     ap.add_argument("--out", default="frames")
     ap.add_argument("--sheet")
     ap.add_argument("--cols", type=int, default=4)

@@ -13,7 +13,8 @@ and one last meteor.
 Rendered straight into a **180° equidistant (azimuthal) fisheye
 domemaster**: centre of frame = zenith, bottom of frame = front of the
 audience, frame edge = springline. The same shader can also output an
-**equirectangular** frame for checking in a VR headset.
+**equirectangular** frame for checking in a VR headset, and a **9:16 reel**
+view for phones (what you'd see lying back under the dome).
 
 ---
 
@@ -76,7 +77,8 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `timeline.py` | The shared timeline: growth front, camera pose, tangent ribbons, landing flashes, colour spread — all pure functions of time. |
 | `score.py` | The procedural soundtrack, generated from the timeline: stereo mix, AmbiX (first-order ambisonics) for dome speaker arrays, and stems. |
 | `tools/make_quote.py` | Typesets the credo cards into `assets/text/quote.png` (glyphs + legibility halo) for the dome and the playground. |
-| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4): four takes, take 2 split into one clip per card (`lines.json` records provenance and durations). |
+| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4). `softly/` holds the four `[softly]` takes; take 3 is split into one clip per card (`line1..6.wav`; `lines.json` records provenance and durations). The earlier neutral takes are `take1..4.mp3`. |
+| `tools/split_voice.py` | Splits a narration take at its pauses into `line1..6.wav` and re-times the credo cards in `params.json` to fit. |
 | `assets/fonts/` | EB Garamond (SIL Open Font License, see `OFL.txt`). |
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
@@ -119,6 +121,11 @@ python render.py --range 0 90 --res 512 --out frames/prev --movie --audio score/
 
 # VR-headset check (2:1 equirectangular)
 python render.py --times 40 --proj equirect --res 2048 --out frames/vr
+
+# 9:16 phone / Instagram cut: overload -> end, 720x1280, sized to just under 30 MB
+python render.py --range 180 289 --proj reel --res 1280 --ss 1 --out frames/reel
+python movie.py frames/reel --audio score/mix_stereo.wav --size-mb 30 --fade-in 1
+# full Instagram quality on a fast machine: --res 1920 --ss 2 (1080x1920)
 ```
 
 ### Stitching frames into a movie
@@ -135,7 +142,10 @@ python movie.py frames/prev --audio score/mix_stereo.wav   # lay in the soundtra
 ```
 
 `--audio` offsets the soundtrack to the first frame, so a partial render
-(say 60–90s) still lines up.
+(say 60–90s) still lines up. `--size-mb N` does a 2-pass H.264 that fills
+just under N MB (it works out the bitrate from the length), and
+`--fade-in S` fades picture and sound up from black for a cut that starts
+mid-piece.
 
 Or add `--movie [h264|hevc|prores]` to any `render.py --range` run. Resolve
 can also import a frame folder directly as an image sequence.
@@ -182,12 +192,17 @@ the procedural layer is the part that's locked to picture.
 * `seed` — integer. Picks which lattice grows. Change it for a whole new structure.
 
 **`output`**
-* `projection` — `domemaster` or `equirect`.
+* `projection` — `domemaster`, `equirect` or `reel` (usually chosen with `--proj`).
 * `fov_deg` — fisheye field of view (180 = hemisphere; >180 for domes that need overscan).
 * `tilt_deg` — dome tilt. Tips the zenith toward the front for tilted/unidirectional domes.
 * `fps` — frame rate (30 now; 60 is a parameter change, not a rebuild).
 * `preview_res` — default square size when `--res` isn't given.
 * `supersample` — samples per pixel per axis (2 = 4 samples). Kills shimmer on thin struts.
+
+**`reel`** — the 9:16 phone view (`--proj reel`; `--res` is the height)
+* `pitch_deg` — elevation of the frame centre (52 puts the zenith star near the top and the credo mid-frame).
+* `vfov_deg` — vertical field of view of the equidistant fisheye (120).
+* `text_scale` — credo size relative to the dome (0.72 keeps the widest card clear of Instagram's side buttons).
 
 **`lattice`** — the ordered structure
 * `cell` — spacing between lattice nodes (world units; the audience is at the origin).
@@ -304,6 +319,8 @@ tangent, panned to where it appears on the dome (separate stems).
   (Resolve Studio needed for output above 4K).
 
 ## Version history
+
+* **Full piece v1.2** — credo re-voiced in Eleven v4 `[softly]` mode (take 3), cards re-timed to it; `--proj reel` 9:16 phone view; `movie.py --size-mb / --fade-in`; `tools/split_voice.py`.
 
 * **Full piece v1** — sections 3–8: up to 16 comets with distinct hues, hyperfocus flood + focus dimming, overload, the supernova ending (inhale, held breath, shock ring, every-colour regrowth), the credo in light with Batesy's narration, afterglow, the closing meteor; matching score; playground covers all of it.
 * **Seed v1** — stateless hash-driven lattice. Issues: ~14s of dead air before growth, orphan fragments floating unconnected, flat white look.

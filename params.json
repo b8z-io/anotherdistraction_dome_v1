@@ -9,6 +9,11 @@
     "preview_res": 768,
     "supersample": 2
   },
+  "reel": {
+    "pitch_deg": 52,
+    "vfov_deg": 120,
+    "text_scale": 0.72
+  },
   "lattice": {
     "cell": 2.0,
     "strut_radius": 0.018,
@@ -1393,7 +1398,7 @@
         "in": 228.0,
         "voice": "assets/voice/line1.wav",
         "voice_at": 228.7,
-        "out": 232.9
+        "out": 233.26
       },
       {
         "rows": [
@@ -1401,10 +1406,10 @@
           "in a brilliant blaze",
           "than it should be stifled by dry-rot."
         ],
-        "in": 233.5,
+        "in": 233.86,
         "voice": "assets/voice/line2.wav",
-        "voice_at": 234.2,
-        "out": 242.7
+        "voice_at": 234.56,
+        "out": 243.36
       },
       {
         "rows": [
@@ -1412,43 +1417,43 @@
           "every atom of me in magnificent glow,",
           "than a sleepy and permanent planet."
         ],
-        "in": 243.3,
+        "in": 243.96,
         "voice": "assets/voice/line3.wav",
-        "voice_at": 244.0,
-        "out": 253.96
+        "voice_at": 244.66,
+        "out": 254.77
       },
       {
         "rows": [
           "The function of man is to live,",
           "not to exist."
         ],
-        "in": 254.56,
+        "in": 255.37,
         "voice": "assets/voice/line4.wav",
-        "voice_at": 255.26,
-        "out": 260.48
+        "voice_at": 256.07,
+        "out": 261.6
       },
       {
         "rows": [
           "I shall not waste my days",
           "trying to prolong them."
         ],
-        "in": 261.08,
+        "in": 262.2,
         "voice": "assets/voice/line5.wav",
-        "voice_at": 261.78,
-        "out": 266.32
+        "voice_at": 262.9,
+        "out": 267.63
       },
       {
         "rows": [
           "I shall use my time."
         ],
-        "in": 266.92,
+        "in": 268.23,
         "voice": "assets/voice/line6.wav",
-        "voice_at": 267.62,
+        "voice_at": 268.93,
         "out": 275.5
       }
     ],
     "credit": "\u2014 Jack London",
-    "credit_in": 269.0,
+    "credit_in": 270.33,
     "credit_gap_deg": 4.0
   },
   "nova": {

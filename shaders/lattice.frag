@@ -10,7 +10,7 @@ out vec4 fragColor;
 
 // ---- output
 uniform vec2  uRes;
-uniform int   uProj;        // 0 = domemaster, 1 = equirectangular
+uniform int   uProj;        // 0 = domemaster, 1 = equirectangular, 2 = reel (9:16 look-up fisheye)
 uniform float uFov;         // fisheye field of view, degrees
 uniform float uTilt;        // dome tilt, degrees (tips zenith toward front)
 uniform int   uSS;          // supersampling per axis
@@ -257,6 +257,17 @@ vec3 viewDir(vec2 frag) {
         float lon = (uv.x - 0.5) * 2.0 * PI;
         float lat = (uv.y - 0.5) * PI;
         return vec3(cos(lat) * sin(lon), sin(lat), -cos(lat) * cos(lon));
+    }
+    if (uProj == 2) {
+        // phone view: an equidistant fisheye lying back under the dome, aimed at the front
+        // uTilt = elevation of the frame centre, uFov = vertical field of view
+        vec2 q = (uv * 2.0 - 1.0) * vec2(uRes.x / uRes.y, 1.0);
+        float rq = length(q);
+        float th = rq * radians(uFov) * 0.5;
+        vec2 aq = rq > 1e-6 ? q / rq : vec2(0.0);
+        float e = radians(uTilt);
+        vec3 fwd = vec3(0.0, sin(e), -cos(e)), up = vec3(0.0, cos(e), sin(e));
+        return normalize(cos(th) * fwd + sin(th) * (aq.x * vec3(1.0, 0.0, 0.0) + aq.y * up));
     }
     vec2 p = uv * 2.0 - 1.0;          // [-1,1], y up
     float r = length(p);
