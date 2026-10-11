@@ -1374,6 +1374,40 @@
       ]
     ]
   },
+  "dof": {
+    "_note": "Depth of field as a bubble of focus: everything within sharp_radius of the newest coloured blob (its head in flight, then where it landed) is sharp, blurring smoothly to max_deg by soft_radius. Focus glides to each new blob over rack_s. Blur is in degrees of the dome, so it looks the same at any resolution. strength_keys fade it in and out over the show.",
+    "sharp_radius": 6.0,
+    "soft_radius": 22.0,
+    "max_deg": 1.0,
+    "rack_s": 0.7,
+    "taps": 64,
+    "strength_keys": [
+      [
+        0,
+        0
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        53,
+        1
+      ],
+      [
+        214,
+        1
+      ],
+      [
+        218,
+        0
+      ],
+      [
+        400,
+        0
+      ]
+    ]
+  },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
     "font": "assets/fonts/EBGaramond.ttf",

@@ -196,6 +196,32 @@ class Timeline:
         k = self.P.get("show", {}).get("focus_keys")
         return min(max(pchip(k, t), 0.0), 1.0) if k else 0.0
 
+    def dof(self, t):
+        """Depth of field: (focus point in world space, strength 0..1).
+
+        A bubble of sharpness follows the newest coloured blob: its head while it
+        flies, then its landing node while the colour spreads. Blur grows with
+        distance from that point (dof.sharp_radius -> dof.soft_radius). When the
+        next blob launches, the focus glides to it over rack_s.
+        """
+        D = self.P.get("dof")
+        live = sorted((T for T in self.tangents if T["launch_s"] <= t), key=lambda T: T["launch_s"])
+        if not D or not live:
+            return np.array([0.0, 0.0, -10.0]), 0.0
+        s = min(max(lerp_keys(D["strength_keys"], t), 0.0), 1.0)
+
+        def target(T):
+            if t < T["land_s"]:
+                h = self.head(T, t)
+                return np.array(T["path"][0] if h is None else h, dtype=float)
+            return np.array(T["land"], dtype=float)
+
+        p = target(live[-1])
+        if len(live) > 1:
+            u = ease_io(min(max((t - live[-1]["launch_s"]) / max(D.get("rack_s", 0.7), 1e-3), 0.0), 1.0))
+            p = target(live[-2]) * (1 - u) + p * u
+        return p, s
+
     def end(self):
         """Length of the piece."""
         sh = self.P.get("show", {})

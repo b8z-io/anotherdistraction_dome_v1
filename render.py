@@ -57,9 +57,17 @@ class Renderer:
         vert = """#version 330
         in vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"""
         self.prog = self.ctx.program(vertex_shader=vert, fragment_shader=frag)
-        quad = np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4")
-        self.vao = self.ctx.vertex_array(self.prog, [(self.ctx.buffer(quad), "2f", "in_pos")])
+        self.post = self.ctx.program(vertex_shader=vert, fragment_shader=(ROOT / "shaders" / "post.frag").read_text())
+        quad = self.ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, 1, 1], dtype="f4"))
+        self.vao = self.ctx.vertex_array(self.prog, [(quad, "2f", "in_pos")])
+        self.vao_post = self.ctx.vertex_array(self.post, [(quad, "2f", "in_pos")])
+        # pass 1 -> linear HDR colour + depth (float, mipmapped for the blur); pass 2 -> 8-bit picture
+        self.hdr = self.ctx.texture((self.w, self.h), 4, dtype="f4")
+        self.hdr.repeat_x = self.hdr.repeat_y = False
+        self.fbo_hdr = self.ctx.framebuffer(color_attachments=[self.hdr])
         self.fbo = self.ctx.simple_framebuffer((self.w, self.h), components=4)
+        # blur sizes are given in degrees of the dome: convert to output pixels
+        self.px_per_deg = self.h / (180.0 if proj == "equirect" else self.vfov)
 
         n = G["N"]
         def tex3d(arr, unit):
@@ -176,11 +184,32 @@ class Renderer:
         return u
 
     def frame(self, t):
-        for k, v in self.uniforms(t).items():
+        u = self.uniforms(t)
+        D = self.P.get("dof", {})
+        fpos, strength = self.TL.dof(t)
+        u["uFocusPos"] = tuple(float(x) for x in fpos)
+        u["uFocusR"] = (D.get("sharp_radius", 4.0), D.get("soft_radius", 16.0))
+        u["uDirect"] = 0
+        for k, v in u.items():
             if k in self.prog:
                 self.prog[k].value = v
-        self.fbo.use()
+        self.fbo_hdr.use()
         self.vao.render(moderngl.TRIANGLE_STRIP)
+        coc_max = D.get("max_deg", 0.0) * strength * self.px_per_deg
+        if coc_max > 0:                       # mip levels let wide blurs gather smoothly with few taps
+            self.hdr.build_mipmaps()
+            self.hdr.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
+        else:                                 # (a mipmap filter without fresh levels reads as black)
+            self.hdr.filter = (moderngl.LINEAR, moderngl.LINEAR)
+        self.hdr.use(10)
+        post = {"uSrc": 10, "uRes": (self.w, self.h), "uCocMax": coc_max, "uTaps": int(D.get("taps", 64)),
+                "uMaskCircle": 1 if self.proj == "domemaster" else 0,
+                "uExposure": self.P["look"]["exposure"], "uMaster": u["uMaster"], "uSeed": float(self.P["seed"])}
+        for k, v in post.items():
+            if k in self.post:
+                self.post[k].value = v
+        self.fbo.use()
+        self.vao_post.render(moderngl.TRIANGLE_STRIP)
         data = self.fbo.read(components=3)
         return Image.frombytes("RGB", (self.w, self.h), data).transpose(Image.FLIP_TOP_BOTTOM)
 

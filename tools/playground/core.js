@@ -402,6 +402,23 @@ const Core = (() => {
     master(t) { const k = this.show().master_keys; return k ? lerpKeys(k, t) : 1; }
     latticeLevel(t) { const k = this.show().lattice_keys; return k ? lerpKeys(k, t) : 1; }
     focus(t) { const k = this.show().focus_keys; return k ? Math.min(Math.max(pchip(k, t), 0), 1) : 0; }
+    // depth of field: [focus point, strength] — a bubble of sharpness follows the newest coloured blob
+    dof(t) {
+      const D = this.P.dof;
+      const live = this.tangents.filter((T) => T.launch_s <= t).sort((a, b) => a.launch_s - b.launch_s);
+      if (!D || !live.length) return [[0, 0, -10], 0];
+      const s = Math.min(Math.max(lerpKeys(D.strength_keys, t), 0), 1);
+      const target = (T) => {
+        if (t < T.land_s) { const rb = this.ribbon(T, t); return rb ? rb.pts[rb.pts.length - 1] : T.path[0]; }
+        return T.land;
+      };
+      let p = target(live[live.length - 1]);
+      if (live.length > 1) {
+        const u = easeIO(Math.min(Math.max((t - live[live.length - 1].launch_s) / Math.max(D.rack_s ?? 0.7, 1e-3), 0), 1));
+        p = add(scl(target(live[live.length - 2]), 1 - u), scl(p, u));
+      }
+      return [p, s];
+    }
     shell(t) {
       const N = this.P.nova;
       if (!N || t < N.t) return [0, 1, 0];

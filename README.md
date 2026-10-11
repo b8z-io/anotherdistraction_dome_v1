@@ -82,6 +82,7 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `assets/fonts/` | EB Garamond (SIL Open Font License, see `OFL.txt`). |
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
 | `shaders/lattice.frag` | The piece itself — a GLSL raymarcher that renders the graph straight into the fisheye. |
+| `shaders/post.frag` | Second pass: depth of field (a bubble of focus around the newest blob), then tonemap. |
 | `render.py` | Headless renderer: contact sheets, image sequences, VR previews. |
 | `movie.py` | Stitches a frame folder into H.264 / HEVC / ProRes — bundled ffmpeg, nothing extra to install. |
 | `tools/playground.html` | Live in-browser preview with a control for every setting; exports `params.json`. Built by `tools/build_playground.py` from `tools/playground/`. |
@@ -280,6 +281,13 @@ holds its first/last value outside the range.
 
 **`tangents[].fade_s`** — `[start, length]`: the comet's colour drains away (the hyperfocus flood receding). Leave out to keep it.
 
+**`dof`** — depth of field as a bubble of focus that follows the shiny thing
+* The lens locks on to the newest coloured blob: its head while it flies, then the node it landed on while its colour spreads. When the next one launches, focus glides to it over `rack_s` (frantic in the overload).
+* `sharp_radius` / `soft_radius` — world units around the blob (a lattice cell is 2): sharp inside the first, blurring smoothly to full by the second.
+* `max_deg` — the softest blur, in degrees of the dome (so the look is the same at 512 or 8K).
+* `strength_keys` — 0–1 over the show. Off until the first comet, and from the supernova on so the credo stays crisp.
+* `taps` — blur samples per pixel (64 is clean; the playground lets you drop it while playing).
+
 **`nova`** — the supernova. Pair it with `growth.front_keys`: the front drops to 0 just before (the inhale, everything retracting into the star) and races back out after.
 * `t` — the burst. `shell_speed`, `shell_width`, `intensity`, `decay_s` — the rainbow shock ring sweeping out over the audience.
 * `level`, `hue_per_path` — after the burst the lattice wears every colour, in rings out from the star (the comets' own colours sit on top).
@@ -327,6 +335,7 @@ tangent, panned to where it appears on the dome (separate stems).
 
 ## Version history
 
+* **Full piece v1.3** — depth of field: a bubble of focus follows the newest comet and racks to each new one (render.py, playground, parity-tested); credo font is a parameter with 12 OFL options; `render.py --fps / --stream`.
 * **Full piece v1.2** — credo re-voiced in Eleven v4 `[softly]` mode (take 3), cards re-timed to it; `--proj reel` 9:16 phone view; `movie.py --size-mb / --fade-in`; `tools/split_voice.py`.
 
 * **Full piece v1** — sections 3–8: up to 16 comets with distinct hues, hyperfocus flood + focus dimming, overload, the supernova ending (inhale, held breath, shock ring, every-colour regrowth), the credo in light with Batesy's narration, afterglow, the closing meteor; matching score; playground covers all of it.

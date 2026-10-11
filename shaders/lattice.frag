@@ -15,6 +15,9 @@ uniform float uFov;         // fisheye field of view, degrees
 uniform float uTilt;        // dome tilt, degrees (tips zenith toward front)
 uniform int   uSS;          // supersampling per axis
 uniform float uSeed;
+uniform int   uDirect;      // 1 = tonemap here (single pass); 0 = write linear colour + blur amount for post.frag
+uniform vec3  uFocusPos;    // depth of field: centre of the bubble of sharpness (world)
+uniform vec2  uFocusR;      // ...sharp out to x, fully soft by y (world units)
 
 // ---- camera
 uniform vec3  uCamPos;      // world
@@ -102,6 +105,12 @@ uniform float uFar;
 
 const float PI = 3.14159265359;
 const int K = 24;
+
+// depth for the depth-of-field pass: a brightness-weighted average of where this pixel's light comes from,
+// turned into a blur amount (0 sharp .. 1 softest) by how far that point is from the focus
+float gDW, gDWT;
+float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+void depthAdd(vec3 c, float t) { float w = lum(c); gDW += w; gDWT += w * t; }
 
 float hash31(vec3 p) {
     p = fract(p * 0.1031 + uSeed * 0.0173);
@@ -297,7 +306,7 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
     for (int r = 0; r < 4; r++) {
         if (r >= uNumRib) break;
         float w = uRibCol[r].w;
-        float core = 0.0, halo = 0.0;
+        float core = 0.0, halo = 0.0, tBest = 1e4;
         for (int i = 0; i < K - 1; i++) {
             vec4 a = uRib[r * K + i], b = uRib[r * K + i + 1];
             float tr, h;
@@ -305,10 +314,14 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
             float inten = mix(a.w, b.w, h);
             float ww = w * (0.3 + 0.7 * mix(float(i), float(i + 1), h) / float(K - 1)); // tapers to the tail
             float occ = tr > tHit ? 0.15 : 1.0;           // behind a strut
-            core = max(core, inten * occ * exp(-(d * d) / (ww * ww)));
+            float cnew = inten * occ * exp(-(d * d) / (ww * ww));
+            if (cnew > core) tBest = tr;
+            core = max(core, cnew);
             halo = max(halo, inten * occ * (0.45 * exp(-(d * d) / (16.0 * ww * ww)) + 0.08 * exp(-d / (ww * 14.0))));
         }
-        col += mix(uRibCol[r].rgb, vec3(1.0), 0.55) * core + uRibCol[r].rgb * halo;
+        vec3 rc = mix(uRibCol[r].rgb, vec3(1.0), 0.55) * core + uRibCol[r].rgb * halo;
+        depthAdd(rc, tBest);
+        col += rc;
     }
     // glowing heads and landing flashes
     for (int f = 0; f < 8; f++) {
@@ -317,8 +330,10 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
         float dist = length(to);
         float ang = acos(clamp(dot(rd, to / dist), -1.0, 1.0));
         float x = ang * dist / uFlashCol[f].w;          // in units of the flash's world-space size
-        col += uFlash[f].w * (mix(uFlashCol[f].rgb, vec3(1.0), 0.5) * exp(-x * x)
+        vec3 fc = uFlash[f].w * (mix(uFlashCol[f].rgb, vec3(1.0), 0.5) * exp(-x * x)
                               + uFlashCol[f].rgb * (0.35 * exp(-x * x / 9.0) + 0.015 * exp(-x / 3.0)));
+        depthAdd(fc, dist);
+        col += fc;
     }
     return col;
 }
@@ -359,14 +374,16 @@ vec2 textAt(vec3 d, vec3 c, vec4 rect) {
     return textureLod(uText, a / uTextSize, uTextLod).rg;
 }
 
-vec3 shade(vec3 rdCam) {
+vec3 shade(vec3 rdCam, out float blur) {
     vec3 rd = uCamRot * rdCam;            // world-space ray
     vec3 col = vec3(0.0);
+    gDW = 0.0; gDWT = 0.0;
 
     // seed star
     vec3 toSeed = normalize(uSeedPos - uCamPos);
     float ang = acos(clamp(dot(rd, toSeed), -1.0, 1.0));
     col += uColTip * uStar * (exp(-pow(ang / uStarSize, 2.0)) + 0.25 * exp(-ang / (uStarSize * 6.0)));
+    depthAdd(col, length(uSeedPos - uCamPos));
 
     float tHit = 1e9;
     if (uFront > 0.0) {
@@ -376,6 +393,8 @@ vec3 shade(vec3 rdCam) {
         vec3 glow = vec3(0.0);
         float tipg = 0.0;
         vec3 hitCol = vec3(0.0);
+        float gW = 0.0, gWT = 0.0;          // where along the ray the glow comes from
+        float tipL = lum(uColTip) * uTipGlow, glowK = uGlow * 0.02;
         for (int i = 0; i < uSteps; i++) {
             vec3 p = ro + rl * t;
             float tip;
@@ -386,9 +405,12 @@ vec3 shade(vec3 rdCam) {
                 float g = fog * near / (1.0 + pow(max(d, 0.0) / uGlowW, 2.0));
                 vec3 e;
                 vec4 s = spreadAt(floor(p / uCell + 0.5), e);
-                glow += g * (uColDeep * (1.0 - s.a) * (1.0 - 0.75 * uFocus) + s.rgb * 0.9) + e * g * 0.6;
+                vec3 gc = g * (uColDeep * (1.0 - s.a) * (1.0 - 0.75 * uFocus) + s.rgb * 0.9) + e * g * 0.6;
+                glow += gc;
+                float w = lum(gc) * glowK; gW += w; gWT += w * t;
             }
             tipg += fog * near * tip;
+            float wt = fog * near * tip * tipL * 0.02; gW += wt; gWT += wt * t;
             if (d < 0.0008 * t) {
                 vec3 emis;
                 float painted;
@@ -409,15 +431,20 @@ vec3 shade(vec3 rdCam) {
             if (t > uFar || length(p) > uExtent + uCell) break;
         }
         col += (hitCol + glow * uGlow * 0.02 + uColTip * tipg * uTipGlow * 0.02) * uLatLevel;
+        depthAdd(hitCol * uLatLevel, tHit);
+        gDW += gW * uLatLevel; gDWT += gWT * uLatLevel;
     }
     col += ribbons(uCamPos, rd, tHit);
-    if (uShell.z > 0.0) col += shell(uCamPos, rd);
+    if (uShell.z > 0.0) { vec3 sc = shell(uCamPos, rd); depthAdd(sc, length(uSeedPos - uCamPos)); col += sc; }
+    float depth = gDW > 1e-6 ? gDWT / gDW : 1e4;    // nothing here: treat as far away
+    blur = smoothstep(uFocusR.x, uFocusR.y, length(uCamPos + rd * depth - uFocusPos));
     // the credo: a soft dark halo behind the words, then the words in light
     if (uTextAlpha.x + uTextAlpha.y > 0.0) {
         vec2 a = textAt(rdCam, uTextDir, uTextRect) * uTextAlpha.x;
         vec2 b = textAt(rdCam, uCreditDir, uCreditRect) * uTextAlpha.y;
         float glyph = max(a.x, b.x), halo = max(a.y, b.y);
         col = col * (1.0 - uTextHalo * halo) + uTextCol * glyph;
+        blur *= 1.0 - smoothstep(0.0, 0.25, max(glyph, halo));   // the words stay sharp
     }
     return col;
 }
@@ -431,14 +458,22 @@ vec3 tonemap(vec3 x) {
 void main() {
     camL = uLatRot * uCamPos;
     vec3 acc = vec3(0.0);
+    float aW = 0.0, aWT = 0.0;
     for (int sy = 0; sy < uSS; sy++)
     for (int sx = 0; sx < uSS; sx++) {
         vec2 off = (vec2(sx, sy) + 0.5) / float(uSS);
         vec3 rd = viewDir(gl_FragCoord.xy - 0.5 + off);
         if (dot(rd, rd) < 0.5) continue;  // outside the dome circle
-        acc += shade(rd);
+        float d;
+        vec3 c = shade(rd, d);
+        acc += c;
+        float w = lum(c) + 1e-4; aW += w; aWT += w * d;
     }
     vec3 col = acc / float(uSS * uSS) * uMaster;
+    if (uDirect == 0) {                   // linear HDR colour + blur amount, for post.frag
+        fragColor = vec4(col, aW > 0.0 ? aWT / aW : 1.0);
+        return;
+    }
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients

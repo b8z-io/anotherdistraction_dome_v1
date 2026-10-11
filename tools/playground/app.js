@@ -7,8 +7,9 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const DEFAULTS = JSON.parse($("#params-default").textContent);
   const FRAG = $("#frag-src").textContent;
+  const POST = $("#post-src").textContent;
   const QMETA = JSON.parse($("#quote-meta").textContent);
-  const STORE = "anotherdistraction.playground.params.v2";
+  const STORE = "anotherdistraction.playground.params.v3";
   const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
   const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
@@ -56,13 +57,20 @@
         if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error("Shader error: " + gl.getShaderInfoLog(s));
         return s;
       };
-      const prog = gl.createProgram();
-      gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"));
-      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
-      gl.bindAttribLocation(prog, 0, "in_pos");
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Shader link error: " + gl.getProgramInfoLog(prog));
+      const link = (fsrc) => {
+        const prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fsrc));
+        gl.bindAttribLocation(prog, 0, "in_pos");
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Shader link error: " + gl.getProgramInfoLog(prog));
+        return prog;
+      };
+      const prog = link(FRAG);
       this.prog = prog;
+      // depth of field needs a float render target; without one the picture is tonemapped in one pass, unblurred
+      this.floatOK = !!gl.getExtension("EXT_color_buffer_float");
+      if (this.floatOK) { this.post = link(POST); this.ploc = {}; this.hdr = gl.createTexture(); this.fbo = gl.createFramebuffer(); this.hdrSize = [0, 0]; }
       gl.useProgram(prog);
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -89,6 +97,10 @@
       if (!(name in this.loc)) this.loc[name] = this.gl.getUniformLocation(this.prog, name);
       return this.loc[name];
     }
+    PL(name) {
+      if (!(name in this.ploc)) this.ploc[name] = this.gl.getUniformLocation(this.post, name);
+      return this.ploc[name];
+    }
     upload(TL) {
       const gl = this.gl, N = TL.G.N;
       const arrays = [TL.G.tex, ...TL.paintTex];
@@ -105,6 +117,7 @@
       const gl = this.gl, c = this.canvas;
       const w = opt.proj === 1 ? opt.res * 2 : opt.res, h = opt.res;
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      gl.useProgram(this.prog);
       gl.viewport(0, 0, w, h);
       const f = (n, v) => { const l = this.L(n); if (l) gl.uniform1f(l, v); };
       const i = (n, v) => { const l = this.L(n); if (l) gl.uniform1i(l, v); };
@@ -182,6 +195,37 @@
         if (fslot < 8) { flash[fslot] = [...m.pts[m.pts.length - 1], ME.head_glow * m.inten[m.inten.length - 1] / Math.max(ME.intensity, 1e-6)]; flashcol[fslot] = [...ME.color, ME.head_size]; fslot++; }
       }
       i("uNumRib", slot); v4v("uRib", rib); v4v("uRibCol", ribcol); v4v("uFlash", flash); v4v("uFlashCol", flashcol);
+      // depth of field: a bubble of focus around the newest coloured blob
+      const D = P.dof || {}, [fpos, fstr] = TL.dof(t);
+      v3("uFocusPos", fpos); v2("uFocusR", [D.sharp_radius ?? 4, D.soft_radius ?? 16]);
+      if (!this.floatOK) { i("uDirect", 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); return; }
+      i("uDirect", 0);
+      gl.activeTexture(gl.TEXTURE10);
+      gl.bindTexture(gl.TEXTURE_2D, this.hdr);
+      if (this.hdrSize[0] !== w || this.hdrSize[1] !== h) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.hdr, 0);
+        this.hdrSize = [w, h];
+      }
+      gl.bindTexture(gl.TEXTURE_2D, null);                 // not bound while it's being drawn into
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const pxPerDeg = h / (opt.proj === 1 ? 180 : o.fov_deg);
+      const cocMax = (D.max_deg ?? 0) * fstr * pxPerDeg;
+      gl.bindTexture(gl.TEXTURE_2D, this.hdr);
+      if (cocMax > 0) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); }
+      else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.useProgram(this.post);
+      const pf = (n, v) => { const l = this.PL(n); if (l) gl.uniform1f(l, v); };
+      const pi = (n, v) => { const l = this.PL(n); if (l) gl.uniform1i(l, v); };
+      pi("uSrc", 10); const lr = this.PL("uRes"); if (lr) gl.uniform2f(lr, w, h);
+      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
+      pf("uExposure", look.exposure); pf("uMaster", TL.master(t)); pf("uSeed", P.seed);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
@@ -590,6 +634,15 @@
           help: "Straight lines: two keys close together make a hard cut to black." }),
         keys("show.audio_keys", "Sound level", { tmax: 300, vmin: 0, vmax: 1, linear: true,
           help: "For score.py (the held breath before the supernova). Not heard here." })),
+      group("Depth of field", "focus follows the shiny thing",
+        keys("dof.strength_keys", "Strength", { tmax: 300, vmin: 0, vmax: 1, linear: true,
+          help: "0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." }),
+        range("dof.sharp_radius", "Sharp within", { min: 0, max: 30, step: 0.5,
+          help: "Distance around the newest blob that stays fully sharp (lattice cells are 2 units)." }),
+        range("dof.soft_radius", "Fully soft by", { min: 1, max: 60, step: 0.5, help: "Blur grows smoothly out to this distance." }),
+        range("dof.max_deg", "Most blur", { min: 0, max: 4, step: 0.05, unit: "°", help: "Size of the softest blur, in degrees of the dome." }),
+        range("dof.rack_s", "Focus pull", { min: 0.05, max: 4, step: 0.05, unit: "s", help: "How long focus takes to glide to each new blob." }),
+        range("dof.taps", "Blur quality", { min: 8, max: 128, step: 8, help: "Samples per pixel. Lower is faster while you play." })),
       group("Supernova", "the reward",
         range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
           help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),

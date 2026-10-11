@@ -46,6 +46,11 @@ for (const [t, cam, front] of ref.camera) {
   const c = TL.camera(t), d = Math.max(...c.pos.map((v, i) => Math.abs(v - cam[i])));
   check(`camera/front @${t}s`, d < 1e-12 && Math.abs(TL.front(t) - front) < 1e-12);
 }
+for (const [t, p, s] of ref.dof || []) {
+  const [jp, js] = TL.dof(t);
+  const d = Math.max(...jp.map((v, k) => Math.abs(v - p[k])));
+  check(`depth of field @${t}s`, d < 1e-9 && Math.abs(js - s) < 1e-12, `max diff ${d}, strength ${js} vs ${s}`);
+}
 for (const [t, star, master, lat, focus, shell, quote] of ref.show || []) {
   const sh = TL.shell(t), q = TL.quote(t);
   const ok = Math.abs(TL.star(t) - star) < 1e-12 && Math.abs(TL.master(t) - master) < 1e-12 &&

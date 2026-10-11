@@ -232,6 +232,11 @@ body.showhelp .help { display: block; }
     "preview_res": 768,
     "supersample": 2
   },
+  "reel": {
+    "pitch_deg": 52,
+    "vfov_deg": 120,
+    "text_scale": 0.72
+  },
   "lattice": {
     "cell": 2.0,
     "strut_radius": 0.018,
@@ -1435,7 +1440,7 @@ body.showhelp .help { display: block; }
     },
     "inhale": {
       "start": 218,
-      "end": 221.4,
+      "end": 222.0,
       "level": 0.2
     },
     "nova": {
@@ -1474,7 +1479,7 @@ body.showhelp .help { display: block; }
     "vivid": 1.15
   },
   "show": {
-    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound. lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
+    "_note": "master_keys: picture level (straight lines; two keys close together = a hard cut). audio_keys: same for sound (flat now: the swell runs straight into the supernova). lattice_keys: brightness of the lattice alone (the afterglow). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
     "end_s": 289.0,
     "master_keys": [
       [
@@ -1489,22 +1494,6 @@ body.showhelp .help { display: block; }
     "audio_keys": [
       [
         0,
-        1
-      ],
-      [
-        221.4,
-        1
-      ],
-      [
-        221.5,
-        0
-      ],
-      [
-        221.98,
-        0
-      ],
-      [
-        222.0,
         1
       ],
       [
@@ -1608,8 +1597,43 @@ body.showhelp .help { display: block; }
       ]
     ]
   },
+  "dof": {
+    "_note": "Depth of field as a bubble of focus: everything within sharp_radius of the newest coloured blob (its head in flight, then where it landed) is sharp, blurring smoothly to max_deg by soft_radius. Focus glides to each new blob over rack_s. Blur is in degrees of the dome, so it looks the same at any resolution. strength_keys fade it in and out over the show.",
+    "sharp_radius": 6.0,
+    "soft_radius": 22.0,
+    "max_deg": 1.0,
+    "rack_s": 0.7,
+    "taps": 64,
+    "strength_keys": [
+      [
+        0,
+        0
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        53,
+        1
+      ],
+      [
+        214,
+        1
+      ],
+      [
+        218,
+        0
+      ],
+      [
+        400,
+        0
+      ]
+    ]
+  },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
+    "font": "assets/fonts/EBGaramond.ttf",
     "font_weight": 500,
     "dir": [
       0,
@@ -1632,7 +1656,7 @@ body.showhelp .help { display: block; }
         "in": 228.0,
         "voice": "assets/voice/line1.wav",
         "voice_at": 228.7,
-        "out": 232.9
+        "out": 233.26
       },
       {
         "rows": [
@@ -1640,10 +1664,10 @@ body.showhelp .help { display: block; }
           "in a brilliant blaze",
           "than it should be stifled by dry-rot."
         ],
-        "in": 233.5,
+        "in": 233.86,
         "voice": "assets/voice/line2.wav",
-        "voice_at": 234.2,
-        "out": 242.7
+        "voice_at": 234.56,
+        "out": 243.36
       },
       {
         "rows": [
@@ -1651,43 +1675,43 @@ body.showhelp .help { display: block; }
           "every atom of me in magnificent glow,",
           "than a sleepy and permanent planet."
         ],
-        "in": 243.3,
+        "in": 243.96,
         "voice": "assets/voice/line3.wav",
-        "voice_at": 244.0,
-        "out": 253.96
+        "voice_at": 244.66,
+        "out": 254.77
       },
       {
         "rows": [
           "The function of man is to live,",
           "not to exist."
         ],
-        "in": 254.56,
+        "in": 255.37,
         "voice": "assets/voice/line4.wav",
-        "voice_at": 255.26,
-        "out": 260.48
+        "voice_at": 256.07,
+        "out": 261.6
       },
       {
         "rows": [
           "I shall not waste my days",
           "trying to prolong them."
         ],
-        "in": 261.08,
+        "in": 262.2,
         "voice": "assets/voice/line5.wav",
-        "voice_at": 261.78,
-        "out": 266.32
+        "voice_at": 262.9,
+        "out": 267.63
       },
       {
         "rows": [
           "I shall use my time."
         ],
-        "in": 266.92,
+        "in": 268.23,
         "voice": "assets/voice/line6.wav",
-        "voice_at": 267.62,
+        "voice_at": 268.93,
         "out": 275.5
       }
     ],
     "credit": "\u2014 Jack London",
-    "credit_in": 269.0,
+    "credit_in": 270.33,
     "credit_gap_deg": 4.0
   },
   "nova": {
@@ -1793,11 +1817,14 @@ out vec4 fragColor;
 
 // ---- output
 uniform vec2  uRes;
-uniform int   uProj;        // 0 = domemaster, 1 = equirectangular
+uniform int   uProj;        // 0 = domemaster, 1 = equirectangular, 2 = reel (9:16 look-up fisheye)
 uniform float uFov;         // fisheye field of view, degrees
 uniform float uTilt;        // dome tilt, degrees (tips zenith toward front)
 uniform int   uSS;          // supersampling per axis
 uniform float uSeed;
+uniform int   uDirect;      // 1 = tonemap here (single pass); 0 = write linear colour + blur amount for post.frag
+uniform vec3  uFocusPos;    // depth of field: centre of the bubble of sharpness (world)
+uniform vec2  uFocusR;      // ...sharp out to x, fully soft by y (world units)
 
 // ---- camera
 uniform vec3  uCamPos;      // world
@@ -1885,6 +1912,12 @@ uniform float uFar;
 
 const float PI = 3.14159265359;
 const int K = 24;
+
+// depth for the depth-of-field pass: a brightness-weighted average of where this pixel's light comes from,
+// turned into a blur amount (0 sharp .. 1 softest) by how far that point is from the focus
+float gDW, gDWT;
+float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+void depthAdd(vec3 c, float t) { float w = lum(c); gDW += w; gDWT += w * t; }
 
 float hash31(vec3 p) {
     p = fract(p * 0.1031 + uSeed * 0.0173);
@@ -2041,6 +2074,17 @@ vec3 viewDir(vec2 frag) {
         float lat = (uv.y - 0.5) * PI;
         return vec3(cos(lat) * sin(lon), sin(lat), -cos(lat) * cos(lon));
     }
+    if (uProj == 2) {
+        // phone view: an equidistant fisheye lying back under the dome, aimed at the front
+        // uTilt = elevation of the frame centre, uFov = vertical field of view
+        vec2 q = (uv * 2.0 - 1.0) * vec2(uRes.x / uRes.y, 1.0);
+        float rq = length(q);
+        float th = rq * radians(uFov) * 0.5;
+        vec2 aq = rq > 1e-6 ? q / rq : vec2(0.0);
+        float e = radians(uTilt);
+        vec3 fwd = vec3(0.0, sin(e), -cos(e)), up = vec3(0.0, cos(e), sin(e));
+        return normalize(cos(th) * fwd + sin(th) * (aq.x * vec3(1.0, 0.0, 0.0) + aq.y * up));
+    }
     vec2 p = uv * 2.0 - 1.0;          // [-1,1], y up
     float r = length(p);
     if (r > 1.0) return vec3(0.0);
@@ -2069,7 +2113,7 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
     for (int r = 0; r < 4; r++) {
         if (r >= uNumRib) break;
         float w = uRibCol[r].w;
-        float core = 0.0, halo = 0.0;
+        float core = 0.0, halo = 0.0, tBest = 1e4;
         for (int i = 0; i < K - 1; i++) {
             vec4 a = uRib[r * K + i], b = uRib[r * K + i + 1];
             float tr, h;
@@ -2077,10 +2121,14 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
             float inten = mix(a.w, b.w, h);
             float ww = w * (0.3 + 0.7 * mix(float(i), float(i + 1), h) / float(K - 1)); // tapers to the tail
             float occ = tr > tHit ? 0.15 : 1.0;           // behind a strut
-            core = max(core, inten * occ * exp(-(d * d) / (ww * ww)));
+            float cnew = inten * occ * exp(-(d * d) / (ww * ww));
+            if (cnew > core) tBest = tr;
+            core = max(core, cnew);
             halo = max(halo, inten * occ * (0.45 * exp(-(d * d) / (16.0 * ww * ww)) + 0.08 * exp(-d / (ww * 14.0))));
         }
-        col += mix(uRibCol[r].rgb, vec3(1.0), 0.55) * core + uRibCol[r].rgb * halo;
+        vec3 rc = mix(uRibCol[r].rgb, vec3(1.0), 0.55) * core + uRibCol[r].rgb * halo;
+        depthAdd(rc, tBest);
+        col += rc;
     }
     // glowing heads and landing flashes
     for (int f = 0; f < 8; f++) {
@@ -2089,8 +2137,10 @@ vec3 ribbons(vec3 ro, vec3 rd, float tHit) {
         float dist = length(to);
         float ang = acos(clamp(dot(rd, to / dist), -1.0, 1.0));
         float x = ang * dist / uFlashCol[f].w;          // in units of the flash's world-space size
-        col += uFlash[f].w * (mix(uFlashCol[f].rgb, vec3(1.0), 0.5) * exp(-x * x)
+        vec3 fc = uFlash[f].w * (mix(uFlashCol[f].rgb, vec3(1.0), 0.5) * exp(-x * x)
                               + uFlashCol[f].rgb * (0.35 * exp(-x * x / 9.0) + 0.015 * exp(-x / 3.0)));
+        depthAdd(fc, dist);
+        col += fc;
     }
     return col;
 }
@@ -2131,14 +2181,16 @@ vec2 textAt(vec3 d, vec3 c, vec4 rect) {
     return textureLod(uText, a / uTextSize, uTextLod).rg;
 }
 
-vec3 shade(vec3 rdCam) {
+vec3 shade(vec3 rdCam, out float blur) {
     vec3 rd = uCamRot * rdCam;            // world-space ray
     vec3 col = vec3(0.0);
+    gDW = 0.0; gDWT = 0.0;
 
     // seed star
     vec3 toSeed = normalize(uSeedPos - uCamPos);
     float ang = acos(clamp(dot(rd, toSeed), -1.0, 1.0));
     col += uColTip * uStar * (exp(-pow(ang / uStarSize, 2.0)) + 0.25 * exp(-ang / (uStarSize * 6.0)));
+    depthAdd(col, length(uSeedPos - uCamPos));
 
     float tHit = 1e9;
     if (uFront > 0.0) {
@@ -2148,6 +2200,8 @@ vec3 shade(vec3 rdCam) {
         vec3 glow = vec3(0.0);
         float tipg = 0.0;
         vec3 hitCol = vec3(0.0);
+        float gW = 0.0, gWT = 0.0;          // where along the ray the glow comes from
+        float tipL = lum(uColTip) * uTipGlow, glowK = uGlow * 0.02;
         for (int i = 0; i < uSteps; i++) {
             vec3 p = ro + rl * t;
             float tip;
@@ -2158,9 +2212,12 @@ vec3 shade(vec3 rdCam) {
                 float g = fog * near / (1.0 + pow(max(d, 0.0) / uGlowW, 2.0));
                 vec3 e;
                 vec4 s = spreadAt(floor(p / uCell + 0.5), e);
-                glow += g * (uColDeep * (1.0 - s.a) * (1.0 - 0.75 * uFocus) + s.rgb * 0.9) + e * g * 0.6;
+                vec3 gc = g * (uColDeep * (1.0 - s.a) * (1.0 - 0.75 * uFocus) + s.rgb * 0.9) + e * g * 0.6;
+                glow += gc;
+                float w = lum(gc) * glowK; gW += w; gWT += w * t;
             }
             tipg += fog * near * tip;
+            float wt = fog * near * tip * tipL * 0.02; gW += wt; gWT += wt * t;
             if (d < 0.0008 * t) {
                 vec3 emis;
                 float painted;
@@ -2181,15 +2238,20 @@ vec3 shade(vec3 rdCam) {
             if (t > uFar || length(p) > uExtent + uCell) break;
         }
         col += (hitCol + glow * uGlow * 0.02 + uColTip * tipg * uTipGlow * 0.02) * uLatLevel;
+        depthAdd(hitCol * uLatLevel, tHit);
+        gDW += gW * uLatLevel; gDWT += gWT * uLatLevel;
     }
     col += ribbons(uCamPos, rd, tHit);
-    if (uShell.z > 0.0) col += shell(uCamPos, rd);
+    if (uShell.z > 0.0) { vec3 sc = shell(uCamPos, rd); depthAdd(sc, length(uSeedPos - uCamPos)); col += sc; }
+    float depth = gDW > 1e-6 ? gDWT / gDW : 1e4;    // nothing here: treat as far away
+    blur = smoothstep(uFocusR.x, uFocusR.y, length(uCamPos + rd * depth - uFocusPos));
     // the credo: a soft dark halo behind the words, then the words in light
     if (uTextAlpha.x + uTextAlpha.y > 0.0) {
         vec2 a = textAt(rdCam, uTextDir, uTextRect) * uTextAlpha.x;
         vec2 b = textAt(rdCam, uCreditDir, uCreditRect) * uTextAlpha.y;
         float glyph = max(a.x, b.x), halo = max(a.y, b.y);
         col = col * (1.0 - uTextHalo * halo) + uTextCol * glyph;
+        blur *= 1.0 - smoothstep(0.0, 0.25, max(glyph, halo));   // the words stay sharp
     }
     return col;
 }
@@ -2203,14 +2265,94 @@ vec3 tonemap(vec3 x) {
 void main() {
     camL = uLatRot * uCamPos;
     vec3 acc = vec3(0.0);
+    float aW = 0.0, aWT = 0.0;
     for (int sy = 0; sy < uSS; sy++)
     for (int sx = 0; sx < uSS; sx++) {
         vec2 off = (vec2(sx, sy) + 0.5) / float(uSS);
         vec3 rd = viewDir(gl_FragCoord.xy - 0.5 + off);
         if (dot(rd, rd) < 0.5) continue;  // outside the dome circle
-        acc += shade(rd);
+        float d;
+        vec3 c = shade(rd, d);
+        acc += c;
+        float w = lum(c) + 1e-4; aW += w; aWT += w * d;
     }
     vec3 col = acc / float(uSS * uSS) * uMaster;
+    if (uDirect == 0) {                   // linear HDR colour + blur amount, for post.frag
+        fragColor = vec4(col, aW > 0.0 ? aWT / aW : 1.0);
+        return;
+    }
+    col = tonemap(col);
+    col = pow(col, vec3(1.0 / 2.2));
+    // deterministic dither against banding in dark gradients
+    float dth = hash31(vec3(gl_FragCoord.xy, 7.0)) - 0.5;
+    col += dth / 255.0 * min(uMaster * 4.0, 1.0);   // true black when the show is dark
+    fragColor = vec4(col, 1.0);
+}
+</script>
+<script type="x-shader/x-fragment" id="post-src">#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler3D;
+// Another Distraction — second pass: depth of field, then tonemap.
+// Input (uSrc, mipmapped): linear HDR colour in rgb, blur amount in a (0 = in focus, 1 = softest,
+// from how far that point is from the focus bubble — see lattice.frag).
+//
+// A pixel with blur b spreads into a disc b * uCocMax pixels across. Gathered with two
+// spiral tap sets: one sized to this pixel's own blur, one at the largest blur so soft
+// neighbours can spill their light over sharper pixels nearby.
+
+out vec4 fragColor;
+
+uniform sampler2D uSrc;
+uniform vec2  uRes;
+uniform float uCocMax;      // px for blur = 1; 0 = no depth of field
+uniform int   uTaps;        // per tap set
+uniform int   uMaskCircle;  // domemaster: black outside the circle
+uniform float uExposure;
+uniform float uMaster;
+uniform float uSeed;
+
+float hash31(vec3 p) {     // same as lattice.frag, so the dither matches
+    p = fract(p * 0.1031 + uSeed * 0.0173);
+    p += dot(p, p.yzx + 33.33);
+    return fract((p.x + p.y) * p.z);
+}
+
+float coc(float b) { return clamp(b, 0.0, 1.0) * uCocMax; }
+
+vec3 tonemap(vec3 x) {
+    x *= uExposure;
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / uRes;
+    if (uMaskCircle == 1 && length(uv * 2.0 - 1.0) > 1.0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    vec4 c = texelFetch(uSrc, ivec2(gl_FragCoord.xy), 0);
+    vec3 col = c.rgb;
+    if (uCocMax > 0.0 && uTaps > 0) {
+        float cc = coc(c.a);
+        vec3 sum = c.rgb;
+        float tot = 1.0;
+        float n = float(uTaps);
+        for (int set = 0; set < 2; set++) {
+            float R = set == 0 ? cc : uCocMax;
+            if (R < 0.75) continue;                       // nothing to gather at this size
+            float dr = R / sqrt(n);                       // spacing between taps
+            float lod = max(log2(dr) + 1.0, 0.0);         // a pre-blurred level smooths between taps
+            for (int i = 0; i < uTaps; i++) {
+                float r = sqrt((float(i) + 0.5) / n) * R;
+                float a = float(i) * 2.39996323 + float(set) * 1.3;
+                vec4 s = textureLod(uSrc, uv + vec2(cos(a), sin(a)) * r / uRes, lod);
+                float sc = coc(s.a);
+                if (set == 1 && sc <= cc) continue;       // the wide set only adds blurrier neighbours
+                float m = smoothstep(r - dr, r + dr, sc);
+                sum += mix(sum / tot, s.rgb, m);
+                tot += 1.0;
+            }
+        }
+        col = sum / tot;
+    }
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients
@@ -2624,6 +2766,23 @@ const Core = (() => {
     master(t) { const k = this.show().master_keys; return k ? lerpKeys(k, t) : 1; }
     latticeLevel(t) { const k = this.show().lattice_keys; return k ? lerpKeys(k, t) : 1; }
     focus(t) { const k = this.show().focus_keys; return k ? Math.min(Math.max(pchip(k, t), 0), 1) : 0; }
+    // depth of field: [focus point, strength] — a bubble of sharpness follows the newest coloured blob
+    dof(t) {
+      const D = this.P.dof;
+      const live = this.tangents.filter((T) => T.launch_s <= t).sort((a, b) => a.launch_s - b.launch_s);
+      if (!D || !live.length) return [[0, 0, -10], 0];
+      const s = Math.min(Math.max(lerpKeys(D.strength_keys, t), 0), 1);
+      const target = (T) => {
+        if (t < T.land_s) { const rb = this.ribbon(T, t); return rb ? rb.pts[rb.pts.length - 1] : T.path[0]; }
+        return T.land;
+      };
+      let p = target(live[live.length - 1]);
+      if (live.length > 1) {
+        const u = easeIO(Math.min(Math.max((t - live[live.length - 1].launch_s) / Math.max(D.rack_s ?? 0.7, 1e-3), 0), 1));
+        p = add(scl(target(live[live.length - 2]), 1 - u), scl(p, u));
+      }
+      return [p, s];
+    }
     shell(t) {
       const N = this.P.nova;
       if (!N || t < N.t) return [0, 1, 0];
@@ -2775,8 +2934,9 @@ if (typeof module !== "undefined") module.exports = Core;
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const DEFAULTS = JSON.parse($("#params-default").textContent);
   const FRAG = $("#frag-src").textContent;
+  const POST = $("#post-src").textContent;
   const QMETA = JSON.parse($("#quote-meta").textContent);
-  const STORE = "anotherdistraction.playground.params.v2";
+  const STORE = "anotherdistraction.playground.params.v3";
   const hsv = (hd) => { const f = (n) => { const k = (n + hd / 60) % 6; return 1 - 0.92 * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)].map((x) => +x.toFixed(3)); };
   const PALETTE = [40, 322, 95, 275, 15, 165, 60, 340, 120, 292, 26, 182, 352, 72, 310, 140].map(hsv);
 
@@ -2824,13 +2984,20 @@ if (typeof module !== "undefined") module.exports = Core;
         if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error("Shader error: " + gl.getShaderInfoLog(s));
         return s;
       };
-      const prog = gl.createProgram();
-      gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"));
-      gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
-      gl.bindAttribLocation(prog, 0, "in_pos");
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Shader link error: " + gl.getProgramInfoLog(prog));
+      const link = (fsrc) => {
+        const prog = gl.createProgram();
+        gl.attachShader(prog, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 in_pos; void main(){ gl_Position = vec4(in_pos,0,1); }"));
+        gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fsrc));
+        gl.bindAttribLocation(prog, 0, "in_pos");
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Shader link error: " + gl.getProgramInfoLog(prog));
+        return prog;
+      };
+      const prog = link(FRAG);
       this.prog = prog;
+      // depth of field needs a float render target; without one the picture is tonemapped in one pass, unblurred
+      this.floatOK = !!gl.getExtension("EXT_color_buffer_float");
+      if (this.floatOK) { this.post = link(POST); this.ploc = {}; this.hdr = gl.createTexture(); this.fbo = gl.createFramebuffer(); this.hdrSize = [0, 0]; }
       gl.useProgram(prog);
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -2857,6 +3024,10 @@ if (typeof module !== "undefined") module.exports = Core;
       if (!(name in this.loc)) this.loc[name] = this.gl.getUniformLocation(this.prog, name);
       return this.loc[name];
     }
+    PL(name) {
+      if (!(name in this.ploc)) this.ploc[name] = this.gl.getUniformLocation(this.post, name);
+      return this.ploc[name];
+    }
     upload(TL) {
       const gl = this.gl, N = TL.G.N;
       const arrays = [TL.G.tex, ...TL.paintTex];
@@ -2873,6 +3044,7 @@ if (typeof module !== "undefined") module.exports = Core;
       const gl = this.gl, c = this.canvas;
       const w = opt.proj === 1 ? opt.res * 2 : opt.res, h = opt.res;
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      gl.useProgram(this.prog);
       gl.viewport(0, 0, w, h);
       const f = (n, v) => { const l = this.L(n); if (l) gl.uniform1f(l, v); };
       const i = (n, v) => { const l = this.L(n); if (l) gl.uniform1i(l, v); };
@@ -2950,6 +3122,37 @@ if (typeof module !== "undefined") module.exports = Core;
         if (fslot < 8) { flash[fslot] = [...m.pts[m.pts.length - 1], ME.head_glow * m.inten[m.inten.length - 1] / Math.max(ME.intensity, 1e-6)]; flashcol[fslot] = [...ME.color, ME.head_size]; fslot++; }
       }
       i("uNumRib", slot); v4v("uRib", rib); v4v("uRibCol", ribcol); v4v("uFlash", flash); v4v("uFlashCol", flashcol);
+      // depth of field: a bubble of focus around the newest coloured blob
+      const D = P.dof || {}, [fpos, fstr] = TL.dof(t);
+      v3("uFocusPos", fpos); v2("uFocusR", [D.sharp_radius ?? 4, D.soft_radius ?? 16]);
+      if (!this.floatOK) { i("uDirect", 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); return; }
+      i("uDirect", 0);
+      gl.activeTexture(gl.TEXTURE10);
+      gl.bindTexture(gl.TEXTURE_2D, this.hdr);
+      if (this.hdrSize[0] !== w || this.hdrSize[1] !== h) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.hdr, 0);
+        this.hdrSize = [w, h];
+      }
+      gl.bindTexture(gl.TEXTURE_2D, null);                 // not bound while it's being drawn into
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const pxPerDeg = h / (opt.proj === 1 ? 180 : o.fov_deg);
+      const cocMax = (D.max_deg ?? 0) * fstr * pxPerDeg;
+      gl.bindTexture(gl.TEXTURE_2D, this.hdr);
+      if (cocMax > 0) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); }
+      else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.useProgram(this.post);
+      const pf = (n, v) => { const l = this.PL(n); if (l) gl.uniform1f(l, v); };
+      const pi = (n, v) => { const l = this.PL(n); if (l) gl.uniform1i(l, v); };
+      pi("uSrc", 10); const lr = this.PL("uRes"); if (lr) gl.uniform2f(lr, w, h);
+      pf("uCocMax", cocMax); pi("uTaps", D.taps ?? 64); pi("uMaskCircle", opt.proj === 1 ? 0 : 1);
+      pf("uExposure", look.exposure); pf("uMaster", TL.master(t)); pf("uSeed", P.seed);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
@@ -3358,6 +3561,15 @@ if (typeof module !== "undefined") module.exports = Core;
           help: "Straight lines: two keys close together make a hard cut to black." }),
         keys("show.audio_keys", "Sound level", { tmax: 300, vmin: 0, vmax: 1, linear: true,
           help: "For score.py (the held breath before the supernova). Not heard here." })),
+      group("Depth of field", "focus follows the shiny thing",
+        keys("dof.strength_keys", "Strength", { tmax: 300, vmin: 0, vmax: 1, linear: true,
+          help: "0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." }),
+        range("dof.sharp_radius", "Sharp within", { min: 0, max: 30, step: 0.5,
+          help: "Distance around the newest blob that stays fully sharp (lattice cells are 2 units)." }),
+        range("dof.soft_radius", "Fully soft by", { min: 1, max: 60, step: 0.5, help: "Blur grows smoothly out to this distance." }),
+        range("dof.max_deg", "Most blur", { min: 0, max: 4, step: 0.05, unit: "°", help: "Size of the softest blur, in degrees of the dome." }),
+        range("dof.rack_s", "Focus pull", { min: 0.05, max: 4, step: 0.05, unit: "s", help: "How long focus takes to glide to each new blob." }),
+        range("dof.taps", "Blur quality", { min: 8, max: 128, step: 8, help: "Samples per pixel. Lower is faster while you play." })),
       group("Supernova", "the reward",
         range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
           help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),
