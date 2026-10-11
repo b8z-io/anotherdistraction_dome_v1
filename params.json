@@ -39,7 +39,33 @@
       4.0
     ],
     "star_intensity": 1.6,
-    "star_size_rad": 0.004
+    "star_size_rad": 0.004,
+    "star_keys": [
+      [
+        0,
+        1
+      ],
+      [
+        294,
+        1
+      ],
+      [
+        301,
+        1.8
+      ],
+      [
+        303.5,
+        1.8
+      ],
+      [
+        309,
+        0
+      ],
+      [
+        315,
+        0
+      ]
+    ]
   },
   "growth": {
     "front_keys": [
@@ -66,6 +92,46 @@
       [
         90,
         61
+      ],
+      [
+        150,
+        84
+      ],
+      [
+        180,
+        100
+      ],
+      [
+        205,
+        118
+      ],
+      [
+        221.9,
+        140
+      ],
+      [
+        222.05,
+        0
+      ],
+      [
+        226,
+        0
+      ],
+      [
+        250,
+        30
+      ],
+      [
+        280,
+        72
+      ],
+      [
+        287,
+        74
+      ],
+      [
+        303,
+        0
       ]
     ]
   },
@@ -120,6 +186,26 @@
       [
         90,
         3.5
+      ],
+      [
+        150,
+        6
+      ],
+      [
+        178,
+        9
+      ],
+      [
+        221.9,
+        9.5
+      ],
+      [
+        222.05,
+        0
+      ],
+      [
+        315,
+        0
       ]
     ],
     "yaw_keys": [
@@ -134,6 +220,34 @@
       [
         90,
         15
+      ],
+      [
+        150,
+        40
+      ],
+      [
+        178,
+        70
+      ],
+      [
+        221.9,
+        82
+      ],
+      [
+        222.05,
+        0
+      ],
+      [
+        226,
+        0
+      ],
+      [
+        300,
+        -20
+      ],
+      [
+        315,
+        -20
       ]
     ],
     "void_inner": 1.2,
@@ -252,6 +366,803 @@
       "flash_size": 0.6,
       "hue_spread_deg": 30,
       "hue_time_s": 6.0
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 1.2,
+      "name": "side glance",
+      "launch_s": 93,
+      "flight_s": 9.0,
+      "from_dir": [
+        150,
+        50
+      ],
+      "out_dir": [
+        100,
+        10
+      ],
+      "out_dist": 20,
+      "loop_radius": 3.5,
+      "land_dir": [
+        -120,
+        55
+      ],
+      "color": [
+        0.463,
+        1.0,
+        0.08
+      ],
+      "width": 0.12,
+      "trail": 8.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 6.0,
+      "spread_limit": 32.0,
+      "hue_spread_deg": -30,
+      "sound": {
+        "motif": [
+          "B4",
+          "E5",
+          "F#5",
+          "B5"
+        ],
+        "chord": [
+          "E4",
+          "B4",
+          "D5",
+          "F#5"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 1.2,
+      "name": "elsewhere",
+      "launch_s": 103,
+      "flight_s": 8.5,
+      "from_dir": [
+        -80,
+        40
+      ],
+      "out_dir": [
+        -170,
+        18
+      ],
+      "out_dist": 22,
+      "loop_radius": 4.0,
+      "land_dir": [
+        30,
+        65
+      ],
+      "color": [
+        0.617,
+        0.08,
+        1.0
+      ],
+      "width": 0.12,
+      "trail": 8.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 6.0,
+      "spread_limit": 32.0,
+      "hue_spread_deg": 35,
+      "sound": {
+        "motif": [
+          "D5",
+          "F#5",
+          "G5",
+          "B5"
+        ],
+        "chord": [
+          "G3",
+          "D4",
+          "F#4",
+          "B4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 1.2,
+      "name": "what was that",
+      "launch_s": 112,
+      "flight_s": 8.0,
+      "from_dir": [
+        20,
+        70
+      ],
+      "out_dir": [
+        60,
+        8
+      ],
+      "out_dist": 18,
+      "loop_radius": 3.0,
+      "land_dir": [
+        -30,
+        40
+      ],
+      "color": [
+        1.0,
+        0.31,
+        0.08
+      ],
+      "width": 0.12,
+      "trail": 8.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 6.0,
+      "spread_limit": 32.0,
+      "hue_spread_deg": 25,
+      "sound": {
+        "motif": [
+          "A4",
+          "C#5",
+          "E5",
+          "A5"
+        ],
+        "chord": [
+          "A3",
+          "E4",
+          "G4",
+          "C#5"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 1.2,
+      "name": "another",
+      "launch_s": 120,
+      "flight_s": 7.5,
+      "from_dir": [
+        -150,
+        45
+      ],
+      "out_dir": [
+        -60,
+        12
+      ],
+      "out_dist": 20,
+      "loop_radius": 3.0,
+      "land_dir": [
+        140,
+        50
+      ],
+      "color": [
+        0.08,
+        1.0,
+        0.77
+      ],
+      "width": 0.12,
+      "trail": 8.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 6.0,
+      "spread_limit": 32.0,
+      "hue_spread_deg": -35,
+      "sound": {
+        "motif": [
+          "F#5",
+          "A5",
+          "B5",
+          "D6"
+        ],
+        "chord": [
+          "F#3",
+          "C#4",
+          "A4",
+          "E5"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 1.2,
+      "name": "and another",
+      "launch_s": 127,
+      "flight_s": 7.0,
+      "from_dir": [
+        80,
+        30
+      ],
+      "out_dir": [
+        175,
+        25
+      ],
+      "out_dist": 17,
+      "loop_radius": 2.5,
+      "land_dir": [
+        -90,
+        60
+      ],
+      "color": [
+        1.0,
+        1.0,
+        0.08
+      ],
+      "width": 0.12,
+      "trail": 8.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 6.0,
+      "spread_limit": 32.0,
+      "hue_spread_deg": -25,
+      "sound": {
+        "motif": [
+          "E5",
+          "G5",
+          "A5",
+          "D6"
+        ],
+        "chord": [
+          "D4",
+          "G4",
+          "A4",
+          "E5"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 1.2,
+      "name": "and another",
+      "launch_s": 133,
+      "flight_s": 7.0,
+      "from_dir": [
+        -20,
+        60
+      ],
+      "out_dir": [
+        -110,
+        10
+      ],
+      "out_dist": 19,
+      "loop_radius": 2.5,
+      "land_dir": [
+        100,
+        35
+      ],
+      "color": [
+        1.0,
+        0.08,
+        0.387
+      ],
+      "width": 0.12,
+      "trail": 8.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 6.0,
+      "spread_limit": 32.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "C#5",
+          "E5",
+          "A5",
+          "B5"
+        ],
+        "chord": [
+          "A3",
+          "E4",
+          "B4",
+          "C#5"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 2.5,
+      "head_size": 0.5,
+      "flash_size": 1.4,
+      "pulse": 3.5,
+      "hue_time_s": 16.0,
+      "precue_s": 2.0,
+      "name": "flow",
+      "launch_s": 148,
+      "flight_s": 6.0,
+      "from_dir": [
+        -60,
+        50
+      ],
+      "out_dir": [
+        10,
+        78
+      ],
+      "out_dist": 16,
+      "loop_radius": 5.0,
+      "land_dir": [
+        0,
+        72
+      ],
+      "color": [
+        1.0,
+        0.72,
+        0.06
+      ],
+      "width": 0.2,
+      "trail": 14.0,
+      "intensity": 10.0,
+      "head_glow": 12.0,
+      "spread_speed": 14.0,
+      "spread_limit": 170.0,
+      "hue_spread_deg": 300,
+      "sound": {
+        "motif": [
+          "D5",
+          "F#5",
+          "A5",
+          "D6",
+          "E6"
+        ],
+        "chord": [
+          "D3",
+          "A3",
+          "F#4",
+          "E5",
+          "A5"
+        ],
+        "motif_level": 0.16,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.3,
+        "thump_level": 0.24,
+        "pad_level": 0.14
+      },
+      "fade_s": [
+        176.0,
+        10.0
+      ]
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 1",
+      "launch_s": 182,
+      "flight_s": 6.0,
+      "from_dir": [
+        170,
+        40
+      ],
+      "out_dir": [
+        -140,
+        10
+      ],
+      "out_dist": 18,
+      "loop_radius": 2.0,
+      "land_dir": [
+        40,
+        50
+      ],
+      "color": [
+        0.08,
+        1.0,
+        0.08
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "D5",
+          "E5",
+          "A5",
+          "B5",
+          "D6"
+        ],
+        "chord": [
+          "B3",
+          "D4",
+          "F#4",
+          "A4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 2",
+      "launch_s": 188,
+      "flight_s": 5.5,
+      "from_dir": [
+        60,
+        55
+      ],
+      "out_dir": [
+        130,
+        8
+      ],
+      "out_dist": 17,
+      "loop_radius": 2.0,
+      "land_dir": [
+        -70,
+        45
+      ],
+      "color": [
+        0.877,
+        0.08,
+        1.0
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "F#5",
+          "G5",
+          "B5",
+          "D6",
+          "E6"
+        ],
+        "chord": [
+          "E3",
+          "B3",
+          "D4",
+          "G4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 3",
+      "launch_s": 193,
+      "flight_s": 5.5,
+      "from_dir": [
+        -100,
+        35
+      ],
+      "out_dir": [
+        -20,
+        12
+      ],
+      "out_dist": 16,
+      "loop_radius": 2.0,
+      "land_dir": [
+        160,
+        55
+      ],
+      "color": [
+        1.0,
+        0.479,
+        0.08
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "A4",
+          "B4",
+          "E5",
+          "F#5",
+          "A5"
+        ],
+        "chord": [
+          "G3",
+          "B3",
+          "D4",
+          "F#4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 4",
+      "launch_s": 197.5,
+      "flight_s": 5.0,
+      "from_dir": [
+        0,
+        80
+      ],
+      "out_dir": [
+        80,
+        15
+      ],
+      "out_dist": 16,
+      "loop_radius": 1.5,
+      "land_dir": [
+        -150,
+        40
+      ],
+      "color": [
+        0.08,
+        0.969,
+        1.0
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "E5",
+          "F#5",
+          "A5",
+          "B5",
+          "E6"
+        ],
+        "chord": [
+          "A3",
+          "C#4",
+          "E4",
+          "B4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 5",
+      "launch_s": 201.5,
+      "flight_s": 5.0,
+      "from_dir": [
+        120,
+        45
+      ],
+      "out_dir": [
+        -170,
+        8
+      ],
+      "out_dist": 18,
+      "loop_radius": 1.5,
+      "land_dir": [
+        -40,
+        65
+      ],
+      "color": [
+        1.0,
+        0.08,
+        0.203
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "B4",
+          "D5",
+          "F#5",
+          "A5",
+          "B5"
+        ],
+        "chord": [
+          "D3",
+          "F#3",
+          "C#4",
+          "E4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 6",
+      "launch_s": 205,
+      "flight_s": 4.5,
+      "from_dir": [
+        -45,
+        40
+      ],
+      "out_dir": [
+        45,
+        10
+      ],
+      "out_dist": 15,
+      "loop_radius": 1.5,
+      "land_dir": [
+        110,
+        45
+      ],
+      "color": [
+        0.816,
+        1.0,
+        0.08
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "C#5",
+          "E5",
+          "F#5",
+          "A5",
+          "C#6"
+        ],
+        "chord": [
+          "F#3",
+          "A3",
+          "C#4",
+          "E4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
+    },
+    {
+      "absorb_s": 1.2,
+      "head_size": 0.35,
+      "flash_size": 0.6,
+      "pulse": 2.0,
+      "hue_time_s": 7.0,
+      "precue_s": 0.8,
+      "name": "overload 7",
+      "launch_s": 208.5,
+      "flight_s": 4.5,
+      "from_dir": [
+        150,
+        60
+      ],
+      "out_dir": [
+        -90,
+        15
+      ],
+      "out_dist": 15,
+      "loop_radius": 1.5,
+      "land_dir": [
+        10,
+        40
+      ],
+      "color": [
+        1.0,
+        0.08,
+        0.847
+      ],
+      "width": 0.11,
+      "trail": 7.0,
+      "intensity": 6.0,
+      "head_glow": 7.0,
+      "spread_speed": 9.0,
+      "spread_limit": 24.0,
+      "hue_spread_deg": 30,
+      "sound": {
+        "motif": [
+          "D5",
+          "F#5",
+          "G5",
+          "A5",
+          "D6"
+        ],
+        "chord": [
+          "G3",
+          "B3",
+          "E4",
+          "A4"
+        ],
+        "motif_level": 0.13,
+        "whoosh_level": 0.09,
+        "bloom_level": 0.18,
+        "thump_level": 0.16,
+        "pad_level": 0.08
+      }
     }
   ],
   "score": {
@@ -277,10 +1188,45 @@
     "master_peak_db": -1.0,
     "paint": {
       "level": 0.12
+    },
+    "pad_decay_s": 25.0,
+    "regrow_chime_level": 0.1,
+    "pulse": {
+      "start": 152,
+      "end": 181,
+      "bpm": 96,
+      "notes": [
+        "D5",
+        "F#5",
+        "A5",
+        "E6",
+        "A5",
+        "F#5"
+      ],
+      "level": 0.09
+    },
+    "riser": {
+      "start": 196,
+      "end": 222,
+      "level": 0.1
+    },
+    "resolve": {
+      "at": 286,
+      "chord": [
+        "D2",
+        "A2",
+        "D3",
+        "F#3",
+        "A3",
+        "E4",
+        "F#4"
+      ],
+      "level": 0.22,
+      "decay_s": 9.0
     }
   },
   "paint": {
-    "_palette": "one vivid hue per tangent, kept clear of the lattice's blue: gold, magenta, lime, violet, coral, turquoise, tangerine, hot pink",
+    "_palette": "one vivid hue per tangent, all different and clear of the lattice's blue",
     "brush_radius": 2.2,
     "brush_speed": 6.0,
     "brush_reach": 3.0,
@@ -289,5 +1235,89 @@
     "tint_amount": 1.0,
     "hue_jitter_deg": 22,
     "vivid": 1.15
+  },
+  "show": {
+    "_note": "master_keys: overall picture + sound level (straight lines; two keys close together = a hard cut). focus_keys: hyperfocus 0..1, dims everything except focus_tangent's colour.",
+    "end_s": 315.0,
+    "reset_s": 222.0,
+    "master_keys": [
+      [
+        0,
+        1
+      ],
+      [
+        221.95,
+        1
+      ],
+      [
+        222.0,
+        0
+      ],
+      [
+        225.0,
+        0
+      ],
+      [
+        225.8,
+        1
+      ],
+      [
+        315,
+        1
+      ]
+    ],
+    "focus_keys": [
+      [
+        0,
+        0
+      ],
+      [
+        150,
+        0
+      ],
+      [
+        156,
+        1
+      ],
+      [
+        176,
+        1
+      ],
+      [
+        182,
+        0
+      ]
+    ],
+    "focus_tangent": 8,
+    "sections": [
+      [
+        0,
+        "Seed"
+      ],
+      [
+        45,
+        "First tug"
+      ],
+      [
+        90,
+        "Escalation"
+      ],
+      [
+        150,
+        "Hyperfocus"
+      ],
+      [
+        180,
+        "Overload"
+      ],
+      [
+        222,
+        "Rebuild"
+      ],
+      [
+        286,
+        "Home"
+      ]
+    ]
   }
 }

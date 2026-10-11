@@ -38,23 +38,30 @@ uniform vec3  uSeedPos;     // world (= root node)
 uniform float uStar;
 uniform float uStarSize;
 
-// ---- colour brought back by tangents (indexed by tangent, max 8)
+// ---- colour brought back by tangents (indexed by tangent, max 16)
 uniform float uTime;
 uniform sampler3D uPaint0;  // per node: (arrival s, coverage) for tangents 0,1
 uniform sampler3D uPaint1;  // ...2,3
 uniform sampler3D uPaint2;  // ...4,5
 uniform sampler3D uPaint3;  // ...6,7
+uniform sampler3D uPaint4;  // ...8,9
+uniform sampler3D uPaint5;  // ...10,11
+uniform sampler3D uPaint6;  // ...12,13
+uniform sampler3D uPaint7;  // ...14,15
 uniform int   uNumT;
-uniform vec3  uSpCol[8];    // each tangent's own colour
-uniform float uLandT[8];    // when it landed
-uniform float uHueSpread[8];// hue drift across its stain (radians)
-uniform float uHueTime[8];  // ...reached this many seconds after landing
-uniform float uSpPulse[8];  // brightness of the travelling wavefront
+uniform vec4  uSpCol[16];   // rgb = the tangent's own colour, a = launch time (nothing to paint before it)
+uniform vec4  uSpA[16];     // landing time, hue drift (radians), hue drift time (s), wavefront brightness
+uniform vec4  uSpB[16];     // colour recedes from fade start (s) over fade length (s); length 0 = it stays
 uniform float uSoftT;       // fade-in time as colour arrives at a node (s)
 uniform float uPulseT;      // duration of the wavefront flash at a node (s)
 uniform float uTintAmt;     // how fully the colour replaces the cool base
 uniform float uHueJitter;   // node-to-node hue variation (radians)
 uniform float uVivid;       // brightness of painted struts relative to the base
+
+// ---- the show
+uniform float uMaster;      // overall picture level: 0 = black (the cut, the end)
+uniform float uFocus;       // hyperfocus: 0..1 dims everything but one tangent's colour
+uniform int   uFocusIdx;    // ...this one
 
 // ---- ribbons in flight (per active slot, max 4; 24 points each, tail -> head)
 uniform int   uNumRib;
@@ -116,11 +123,11 @@ vec3 hueRot(vec3 c, float a) {
     return max(c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca), 0.0);
 }
 
-vec2 paintOf(ivec3 g, int i) {
-    int t = i / 2, j = i - 2 * t;
-    vec4 v = t == 0 ? texelFetch(uPaint0, g, 0) : t == 1 ? texelFetch(uPaint1, g, 0)
-           : t == 2 ? texelFetch(uPaint2, g, 0) : texelFetch(uPaint3, g, 0);
-    return j == 0 ? v.xy : v.zw;
+vec4 paintTex(ivec3 g, int t) {
+    return t == 0 ? texelFetch(uPaint0, g, 0) : t == 1 ? texelFetch(uPaint1, g, 0)
+         : t == 2 ? texelFetch(uPaint2, g, 0) : t == 3 ? texelFetch(uPaint3, g, 0)
+         : t == 4 ? texelFetch(uPaint4, g, 0) : t == 5 ? texelFetch(uPaint5, g, 0)
+         : t == 6 ? texelFetch(uPaint6, g, 0) : texelFetch(uPaint7, g, 0);
 }
 
 // Colour carried back by tangents, at one lattice node.
@@ -130,20 +137,32 @@ vec4 spreadAt(vec3 id, out vec3 emis) {
     vec4 acc = vec4(0.0);
     ivec3 g = gridOf(id);
     if (uNumT == 0 || !inGrid(g)) return acc;
-    for (int i = 0; i < 8; i++) {
-        if (i >= uNumT) break;
-        vec2 pc = paintOf(g, i);
-        float arr = pc.x, cov = pc.y;
-        if (arr < 0.0 || uTime < arr - uPulseT * 2.0) continue;
-        float dt = uTime - arr;
-        // hue drifts across the stain (early = the ribbon's own colour), plus a little per node
-        float drift = uHueSpread[i] * clamp((arr - uLandT[i]) / uHueTime[i], -0.4, 1.0);
-        float jit = (hash31(id * 1.37 + float(i) * 7.1) - 0.5) * uHueJitter;
-        vec3 col = hueRot(uSpCol[i], drift + jit);
-        float w = clamp(dt / uSoftT + 0.5, 0.0, 1.0) * cov * uTintAmt;
-        acc = acc * (1.0 - w) + vec4(col, 1.0) * w;
-        float x = dt / uPulseT;
-        emis += col * exp(-x * x) * cov * uSpPulse[i];
+    for (int t = 0; t < 8; t++) {
+        if (2 * t >= uNumT) break;
+        if (uTime < uSpCol[2 * t].a && (2 * t + 1 >= uNumT || uTime < uSpCol[2 * t + 1].a)) continue;  // nothing launched yet
+        vec4 v = paintTex(g, t);
+        for (int j = 0; j < 2; j++) {
+            int i = 2 * t + j;
+            if (i >= uNumT) break;
+            float arr = j == 0 ? v.x : v.z, cov = j == 0 ? v.y : v.w;
+            if (arr < 0.0 || uTime < arr - uPulseT * 2.0) continue;
+            float dt = uTime - arr;
+            vec4 A = uSpA[i];
+            // hue drifts across the stain (early = the ribbon's own colour), plus a little per node
+            float drift = A.y * clamp((arr - A.x) / A.z, -0.4, 1.0);
+            float jit = (hash31(id * 1.37 + float(i) * 7.1) - 0.5) * uHueJitter;
+            vec3 col = hueRot(uSpCol[i].rgb, drift + jit);
+            float keep = i == uFocusIdx ? 1.0 : 1.0 - 0.7 * uFocus;
+            vec4 B = uSpB[i];
+            if (B.y > 0.0) {                     // a colour that recedes (e.g. hyperfocus washing out)
+                cov *= 1.0 - smoothstep(B.x, B.x + B.y, uTime);
+                if (cov <= 0.0) continue;
+            }
+            float w = clamp(dt / uSoftT + 0.5, 0.0, 1.0) * cov * uTintAmt;
+            acc = acc * (1.0 - w) + vec4(col * keep, 1.0) * w;
+            float x = dt / uPulseT;
+            emis += col * exp(-x * x) * cov * A.w * keep;
+        }
     }
     return acc;
 }
@@ -202,7 +221,7 @@ vec3 strutColour(vec3 p, float tip, out vec3 emis, out float painted) {
     vec4 s1 = spreadAt(id + dir, e1);
     vec4 s = mix(s0, s1, h);
     emis = mix(e0, e1, h);
-    vec3 base = mix(uColStrut, uColTip, clamp(tip * 1.5, 0.0, 1.0));
+    vec3 base = mix(uColStrut, uColTip, clamp(tip * 1.5, 0.0, 1.0)) * (1.0 - 0.75 * uFocus);
     painted = s.a;
     return base * (1.0 - s.a) + s.rgb * uVivid;
 }
@@ -295,7 +314,7 @@ vec3 shade(vec3 rdCam) {
                 float g = fog * near / (1.0 + pow(max(d, 0.0) / uGlowW, 2.0));
                 vec3 e;
                 vec4 s = spreadAt(floor(p / uCell + 0.5), e);
-                glow += g * (uColDeep * (1.0 - s.a) + s.rgb * 0.9) + e * g * 0.6;
+                glow += g * (uColDeep * (1.0 - s.a) * (1.0 - 0.75 * uFocus) + s.rgb * 0.9) + e * g * 0.6;
             }
             tipg += fog * near * tip;
             if (d < 0.0008 * t) {
@@ -303,7 +322,7 @@ vec3 shade(vec3 rdCam) {
                 float painted;
                 vec3 sc = strutColour(p, tip, emis, painted);
                 // distant struts sink into deep blue — or, if painted, a deep shade of their own colour
-                vec3 far = mix(uColDeep * 2.5, sc * 0.3, painted);
+                vec3 far = mix(uColDeep * 2.5 * (1.0 - 0.75 * uFocus), sc * 0.3, painted);
                 vec3 base = mix(far, sc, fog);
                 hitCol = (base * mix(0.35, 1.0, fog) + emis * fog * 0.35) * near;
                 tHit = t;
@@ -341,11 +360,11 @@ void main() {
         if (dot(rd, rd) < 0.5) continue;  // outside the dome circle
         acc += shade(rd);
     }
-    vec3 col = acc / float(uSS * uSS);
+    vec3 col = acc / float(uSS * uSS) * uMaster;
     col = tonemap(col);
     col = pow(col, vec3(1.0 / 2.2));
     // deterministic dither against banding in dark gradients
     float dth = hash31(vec3(gl_FragCoord.xy, 7.0)) - 0.5;
-    col += dth / 255.0;
+    col += dth / 255.0 * min(uMaster * 4.0, 1.0);   // true black when the show is dark
     fragColor = vec4(col, 1.0);
 }

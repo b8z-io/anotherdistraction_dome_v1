@@ -61,7 +61,9 @@ class Renderer:
         PT = P["paint"]
         pad8 = lambda xs, fill=0.0: list(xs) + [fill] * (8 - len(xs))
         Tn = self.TL.tangents
-        cols = [tuple(T["color"]) for T in Tn] + [(0.0, 0.0, 0.0)] * (8 - len(Tn))
+        cols = [(*T["color"], T["launch_s"]) for T in Tn] + [(0.0, 0.0, 0.0, 1e9)] * (16 - len(Tn))
+        self.spA = [(T["land_s"], math.radians(T["hue_spread_deg"]), T["hue_time_s"]) for T in Tn]
+        sh = P.get("show", {})
         static = {
             "uRes": (self.w, self.h),
             "uProj": 1 if proj == "equirect" else 0,
@@ -70,13 +72,11 @@ class Renderer:
             "uVoidIn": C["void_inner"], "uVoidOut": C["void_outer"],
             "uLatRot": mat(G["rot"]),
             "uCell": L["cell"], "uStrutR": L["strut_radius"], "uNodeR": L["node_radius"],
-            "uGraph": 0, "uPaint0": 1, "uPaint1": 2, "uPaint2": 3, "uPaint3": 4,
+            "uGraph": 0, **{f"uPaint{k}": 1 + k for k in range(8)},
             "uGridH": G["H"], "uExtent": L["extent"], "uXDelay": L["crosslink_delay"],
             "uSeedPos": tuple(G["stats"]["root_world"]), "uStarSize": S["star_size_rad"],
             "uNumT": len(Tn), "uSpCol": cols,
-            "uLandT": pad8([T["land_s"] for T in Tn]),
-            "uHueSpread": pad8([math.radians(T["hue_spread_deg"]) for T in Tn]),
-            "uHueTime": pad8([T["hue_time_s"] for T in Tn], 1.0),
+            "uFocusIdx": int(sh.get("focus_tangent", -1)),
             "uSoftT": PT["fade_in_s"], "uPulseT": PT["pulse_s"], "uTintAmt": PT["tint_amount"],
             "uHueJitter": math.radians(PT["hue_jitter_deg"]), "uVivid": PT["vivid"],
             "uColDeep": tuple(look["col_deep"]), "uColStrut": tuple(look["col_strut"]),
@@ -94,7 +94,10 @@ class Renderer:
         u = {"uFront": TL.front(t), "uStar": TL.star(t),
              "uCamPos": tuple(cam), "uCamRot": mat(R)}
         u["uTime"] = t
-        u["uSpPulse"] = [TL.pulse(T, t) for T in TL.tangents] + [0.0] * (8 - len(TL.tangents))
+        u["uSpA"] = [(*a, TL.pulse(T, t)) for a, T in zip(self.spA, TL.tangents)] + [(0.0, 0.0, 1.0, 0.0)] * (16 - len(TL.tangents))
+        u["uSpB"] = [(*T.get("fade_s", [0.0, 0.0]), 0.0, 0.0) for T in TL.tangents] + [(0.0, 0.0, 0.0, 0.0)] * (16 - len(TL.tangents))
+        u["uMaster"] = TL.master(t)
+        u["uFocus"] = TL.focus(t)
         rib = np.zeros((4 * 24, 4), np.float32)
         ribcol = [(0.0, 0.0, 0.0, 0.0)] * 4
         flash = [(0.0, 0.0, 0.0, 0.0)] * 8
