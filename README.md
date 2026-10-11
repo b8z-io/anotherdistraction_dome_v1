@@ -208,7 +208,7 @@ the procedural layer is the part that's locked to picture.
 **`reel`** — the 9:16 phone view (`--proj reel`; `--res` is the height)
 * `pitch_deg` — elevation of the frame centre (52 puts the zenith star near the top and the credo mid-frame).
 * `vfov_deg` — vertical field of view of the equidistant fisheye (120).
-* `text_scale` — credo size relative to the dome (0.72 keeps the widest card clear of Instagram's side buttons).
+* `text_scale` — credo size relative to the dome (0.65 keeps the widest Space Grotesk card clear of Instagram's side buttons).
 
 **`quote.font`** — the credo typeface (a .ttf under `assets/fonts/`; variable fonts use `font_weight`). Twelve OFL options ship in `assets/fonts/`, compared in `previews/font_options.png`: EB Garamond (default), Cormorant Garamond, Libre Baskerville, Lora, Fraunces, Playfair Display, Cinzel, Josefin Sans, Jost, Montserrat, Raleway, Space Grotesk. Change it, then run `python tools/make_quote.py` (and `tools/build_playground.py` for the playground).
 
@@ -283,7 +283,8 @@ holds its first/last value outside the range.
 
 **`dof`** — depth of field as a bubble of focus that follows the shiny thing
 * The lens locks on to the newest coloured blob: its head while it flies, then the node it landed on while its colour spreads. When the next one launches, focus glides to it over `rack_s` (frantic in the overload).
-* `sharp_radius` / `soft_radius` — world units around the blob (a lattice cell is 2): sharp inside the first, blurring smoothly to full by the second.
+* `focus_radius` — everything within this distance of the blob, in 3D, stays sharp (world units; a lattice cell is 2).
+* `falloff` — beyond that radius, focus fades gently over this much further distance until fully soft. Small = a crisp edge to the bubble, large = a slow drop-off.
 * `max_deg` — the softest blur, in degrees of the dome (so the look is the same at 512 or 8K).
 * `strength_keys` — 0–1 over the show. Off until the first comet, and from the supernova on so the credo stays crisp.
 * `taps` — blur samples per pixel (64 is clean; the playground lets you drop it while playing).
@@ -335,7 +336,7 @@ tangent, panned to where it appears on the dome (separate stems).
 
 ## Version history
 
-* **Full piece v1.3** — depth of field: a bubble of focus follows the newest comet and racks to each new one (render.py, playground, parity-tested); credo font is a parameter with 12 OFL options; `render.py --fps / --stream`.
+* **Full piece v1.3** — depth of field: a bubble of focus follows the newest comet and racks to each new one (render.py, playground, parity-tested); credo set in Space Grotesk (font is a parameter, 12 OFL options); `render.py --fps / --stream`.
 * **Full piece v1.2** — credo re-voiced in Eleven v4 `[softly]` mode (take 3), cards re-timed to it; `--proj reel` 9:16 phone view; `movie.py --size-mb / --fade-in`; `tools/split_voice.py`.
 
 * **Full piece v1** — sections 3–8: up to 16 comets with distinct hues, hyperfocus flood + focus dimming, overload, the supernova ending (inhale, held breath, shock ring, every-colour regrowth), the credo in light with Batesy's narration, afterglow, the closing meteor; matching score; playground covers all of it.

@@ -12,7 +12,7 @@
   "reel": {
     "pitch_deg": 52,
     "vfov_deg": 120,
-    "text_scale": 0.72
+    "text_scale": 0.65
   },
   "lattice": {
     "cell": 2.0,
@@ -1375,9 +1375,9 @@
     ]
   },
   "dof": {
-    "_note": "Depth of field as a bubble of focus: everything within sharp_radius of the newest coloured blob (its head in flight, then where it landed) is sharp, blurring smoothly to max_deg by soft_radius. Focus glides to each new blob over rack_s. Blur is in degrees of the dome, so it looks the same at any resolution. strength_keys fade it in and out over the show.",
-    "sharp_radius": 6.0,
-    "soft_radius": 22.0,
+    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that it softens gently over the next `falloff` units until fully out of focus (max_deg of blur). Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
+    "focus_radius": 6.0,
+    "falloff": 16.0,
     "max_deg": 1.0,
     "rack_s": 0.7,
     "taps": 64,
@@ -1410,7 +1410,7 @@
   },
   "quote": {
     "_note": "Jack London's Credo (1916, public domain). Cards fade in at 'in', the voice clip starts at 'voice_at', the card fades out at 'out'. Re-run tools/make_quote.py after changing any text.",
-    "font": "assets/fonts/EBGaramond.ttf",
+    "font": "assets/fonts/SpaceGrotesk.ttf",
     "font_weight": 500,
     "dir": [
       0,

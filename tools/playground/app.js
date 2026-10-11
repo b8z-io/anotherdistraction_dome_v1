@@ -197,7 +197,7 @@
       i("uNumRib", slot); v4v("uRib", rib); v4v("uRibCol", ribcol); v4v("uFlash", flash); v4v("uFlashCol", flashcol);
       // depth of field: a bubble of focus around the newest coloured blob
       const D = P.dof || {}, [fpos, fstr] = TL.dof(t);
-      v3("uFocusPos", fpos); v2("uFocusR", [D.sharp_radius ?? 4, D.soft_radius ?? 16]);
+      v3("uFocusPos", fpos); v2("uFocusR", [D.focus_radius ?? 6, (D.focus_radius ?? 6) + Math.max(D.falloff ?? 16, 1e-3)]);
       if (!this.floatOK) { i("uDirect", 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); return; }
       i("uDirect", 0);
       gl.activeTexture(gl.TEXTURE10);
@@ -634,15 +634,19 @@
           help: "Straight lines: two keys close together make a hard cut to black." }),
         keys("show.audio_keys", "Sound level", { tmax: 300, vmin: 0, vmax: 1, linear: true,
           help: "For score.py (the held breath before the supernova). Not heard here." })),
-      group("Depth of field", "focus follows the shiny thing",
-        keys("dof.strength_keys", "Strength", { tmax: 300, vmin: 0, vmax: 1, linear: true,
-          help: "0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." }),
-        range("dof.sharp_radius", "Sharp within", { min: 0, max: 30, step: 0.5,
-          help: "Distance around the newest blob that stays fully sharp (lattice cells are 2 units)." }),
-        range("dof.soft_radius", "Fully soft by", { min: 1, max: 60, step: 0.5, help: "Blur grows smoothly out to this distance." }),
-        range("dof.max_deg", "Most blur", { min: 0, max: 4, step: 0.05, unit: "°", help: "Size of the softest blur, in degrees of the dome." }),
-        range("dof.rack_s", "Focus pull", { min: 0.05, max: 4, step: 0.05, unit: "s", help: "How long focus takes to glide to each new blob." }),
-        range("dof.taps", "Blur quality", { min: 8, max: 128, step: 8, help: "Samples per pixel. Lower is faster while you play." })),
+      group("Depth of field", "keep your eye on the shiny thing",
+        h("p", { class: "help" }, "Focus travels with the newest coloured blob through the lattice in 3D. Everything near it is sharp; further away it goes gently out of focus. A lattice cell is 2 units."),
+        range("dof.focus_radius", "In-focus radius", { min: 0, max: 40, step: 0.5,
+          help: "Every strut within this distance of the blob stays pin-sharp." }),
+        range("dof.falloff", "Fade to soft over", { min: 0.5, max: 60, step: 0.5,
+          help: "Beyond the radius, focus fades gently over this much more distance. Small = a hard edge, large = a slow, gentle drop-off." }),
+        h("h4", {}, "Fine-tuning"),
+        range("dof.max_deg", "How soft is soft", { min: 0, max: 4, step: 0.05, unit: "°",
+          help: "How blurry things are once fully out of focus (0 turns the effect off)." }),
+        range("dof.rack_s", "Focus moves to a new blob in", { min: 0.05, max: 4, step: 0.05, unit: "s" }),
+        keys("dof.strength_keys", "On / off over the show", { tmax: 300, vmin: 0, vmax: 1, linear: true,
+          help: "1 = on, 0 = everything sharp. Off before the first comet and from the supernova on, so the credo stays crisp." }),
+        range("dof.taps", "Blur quality", { min: 8, max: 128, step: 8, help: "Lower is faster while you play; renders use the saved value." })),
       group("Supernova", "the reward",
         range("nova.t", "Burst at", { min: 0, max: 400, step: 0.1, unit: "s",
           help: "Pair it with the growth front: the front drops to 0 just before (the inhale) and races back out after." }),

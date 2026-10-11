@@ -201,7 +201,7 @@ class Timeline:
 
         A bubble of sharpness follows the newest coloured blob: its head while it
         flies, then its landing node while the colour spreads. Blur grows with
-        distance from that point (dof.sharp_radius -> dof.soft_radius). When the
+        distance from that point (sharp within dof.focus_radius, fading over dof.falloff). When the
         next blob launches, the focus glides to it over rack_s.
         """
         D = self.P.get("dof")

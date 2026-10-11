@@ -188,7 +188,8 @@ class Renderer:
         D = self.P.get("dof", {})
         fpos, strength = self.TL.dof(t)
         u["uFocusPos"] = tuple(float(x) for x in fpos)
-        u["uFocusR"] = (D.get("sharp_radius", 4.0), D.get("soft_radius", 16.0))
+        r0 = D.get("focus_radius", 6.0)
+        u["uFocusR"] = (r0, r0 + max(D.get("falloff", 16.0), 1e-3))      # sharp inside, fully soft beyond
         u["uDirect"] = 0
         for k, v in u.items():
             if k in self.prog:
