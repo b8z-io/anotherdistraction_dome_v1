@@ -8,6 +8,7 @@ changing the shader, the timeline or params.json:
 
   python tools/build_playground.py
 """
+import base64
 import json
 from pathlib import Path
 
@@ -31,6 +32,8 @@ def main():
         "__SHADER__": shader_es300(),
         "__CORE__": (SRC / "core.js").read_text(),
         "__APP__": (SRC / "app.js").read_text(),
+        "__QMETA__": (ROOT / "assets" / "text" / "quote.json").read_text(),
+        "__QPNG__": "data:image/png;base64," + base64.b64encode((ROOT / "assets" / "text" / "quote.png").read_bytes()).decode(),
     }
     for k, v in parts.items():
         assert page.count(k) == 1, k

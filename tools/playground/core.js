@@ -285,7 +285,7 @@ const Core = (() => {
 
   function packPaint(fields, N) {
     const n3 = N * N * N, texs = [];
-    for (let t = 0; t < 4; t++) {
+    for (let t = 0; t < 8; t++) {
       const out = new Float32Array(n3 * 4);
       for (let q = 0; q < n3; q++) { out[q * 4] = -1; out[q * 4 + 2] = -1; }
       for (let j = 0; j < 2; j++) {
@@ -325,6 +325,15 @@ const Core = (() => {
     const h00 = 2 * s ** 3 - 3 * s ** 2 + 1, h10 = s ** 3 - 2 * s ** 2 + s;
     const h01 = -2 * s ** 3 + 3 * s ** 2, h11 = s ** 3 - s ** 2;
     return h00 * ys[i] + h10 * h[i] * m[i] + h01 * ys[i + 1] + h11 * h[i] * m[i + 1];
+  }
+  function lerpKeys(keys, t) {
+    const ks = keys.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    if (t <= ks[0][0]) return ks[0][1];
+    for (let i = 0; i < ks.length - 1; i++) {
+      const [t0, v0] = ks[i], [t1, v1] = ks[i + 1];
+      if (t <= t1) return t1 > t0 ? v0 + (v1 - v0) * (t - t0) / (t1 - t0) : v1;
+    }
+    return ks[ks.length - 1][1];
   }
   const smooth = (x) => { x = Math.min(Math.max(x, 0), 1); return x * x * (3 - 2 * x); };
   const easeIO = (x) => { x = Math.min(Math.max(x, 0), 1); return x * x * x * (x * (6 * x - 15) + 10); };
@@ -379,14 +388,57 @@ const Core = (() => {
       this.P = P;
       this.G = buildLattice(P);
       this.tangents = (P.tangents || []).map((T, i) => this._resolve(i, T));
-      if (this.tangents.length > 8) throw new Error("At most 8 tangents (shader limit).");
+      if (this.tangents.length > 16) throw new Error("At most 16 tangents (shader limit).");
       const fields = this.tangents.map((T) => this._paint(T));
       this.paintTex = packPaint(fields, this.G.N);
     }
     front(t) { const k = this.P.growth.front_keys; return t < k[0][0] ? -1 : pchip(k, t); }
     star(t) {
       const s = this.P.seed_point, [a, b] = s.star_fade_in_s;
-      return s.star_intensity * smooth((t - a) / Math.max(b - a, 1e-6));
+      const k = s.star_keys ? lerpKeys(s.star_keys, t) : 1;
+      return s.star_intensity * smooth((t - a) / Math.max(b - a, 1e-6)) * k;
+    }
+    show() { return this.P.show || {}; }
+    master(t) { const k = this.show().master_keys; return k ? lerpKeys(k, t) : 1; }
+    latticeLevel(t) { const k = this.show().lattice_keys; return k ? lerpKeys(k, t) : 1; }
+    focus(t) { const k = this.show().focus_keys; return k ? Math.min(Math.max(pchip(k, t), 0), 1) : 0; }
+    shell(t) {
+      const N = this.P.nova;
+      if (!N || t < N.t) return [0, 1, 0];
+      const dt = t - N.t;
+      return [N.shell_speed * dt, N.shell_width, N.intensity * Math.exp(-dt / N.decay_s)];
+    }
+    quote(t) {
+      const Q = this.P.quote;
+      if (!Q) return [-1, 0, 0];
+      const f = Q.fade_s;
+      for (let i = 0; i < Q.cards.length; i++) {
+        const c = Q.cards[i];
+        if (c.in <= t && t <= c.out) {
+          const a = Math.min(smooth((t - c.in) / f), 1 - smooth((t - c.out + f * 2.5) / (f * 2.5)));
+          let cr = 0;
+          if (i === Q.cards.length - 1) {
+            const last = Q.cards[Q.cards.length - 1];
+            cr = Math.min(smooth((t - Q.credit_in) / (f * 1.5)), 1 - smooth((t - last.out + f * 2.5) / (f * 2.5)));
+          }
+          return [i, a, cr];
+        }
+      }
+      return [-1, 0, 0];
+    }
+    meteor(t, k = 24) {
+      const M = this.P.meteor;
+      if (!M || !(M.t <= t && t <= M.t + M.dur)) return null;
+      const { pos: cam, R } = this.camera(M.t);
+      const a = dirFrom(M.from_dir[0], M.from_dir[1]), b = dirFrom(M.to_dir[0], M.to_dir[1]);
+      const om = Math.acos(Math.min(Math.max(dot(a, b), -1), 1));
+      const slerp = (x) => scl(add(scl(a, Math.sin((1 - x) * om)), scl(b, Math.sin(x * om))), 1 / Math.sin(om));
+      const u = (t - M.t) / M.dur * (1 + M.trail);
+      const head = Math.min(u, 1), tail = Math.min(Math.max(u - M.trail, 0), 1);
+      if (head - tail < 1e-4) return null;
+      const env = smooth(u / 0.25) * (1 - smooth((u - 1) / M.trail));
+      const ss = linspace(tail, head, k), al = linspace(0, 1, k);
+      return { pts: ss.map((x) => add(cam, scl(mv(R, slerp(x)), M.dist))), inten: al.map((x) => x ** 1.6 * M.intensity * env) };
     }
     camera(t) {
       const C = this.P.camera;
@@ -478,6 +530,7 @@ const Core = (() => {
     flash(T, t) { const dt = t - T.land_s; return dt < 0 ? 0 : T.intensity * 2 * Math.exp(-dt / 1.2); }
     pulse(T, t) { return t < T.launch_s ? 0 : T.pulse * (t < T.land_s ? 1 : Math.exp(-(t - T.land_s) / 7)); }
     end() {
+      if (this.show().end_s) return this.show().end_s;
       const lastKey = (keys) => Math.max(...keys.map((k) => k[0]));
       const C = this.P.camera;
       return Math.max(lastKey(this.P.growth.front_keys), lastKey(C.y_keys), lastKey(C.yaw_keys),
@@ -485,6 +538,6 @@ const Core = (() => {
     }
   }
 
-  return { Generator, seedSequenceState, buildLattice, paintField, Timeline, pchip, dirFrom, eulerToMat };
+  return { Generator, seedSequenceState, buildLattice, paintField, Timeline, pchip, lerpKeys, dirFrom, eulerToMat };
 })();
 if (typeof module !== "undefined") module.exports = Core;
