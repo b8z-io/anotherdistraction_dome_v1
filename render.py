@@ -11,6 +11,8 @@ Examples
   python render.py --times 30 --proj equirect --res 2048           # VR preview
   python render.py --range 176 289 --proj reel --res 1280 --out frames/reel   # 9:16 phone cut (720x1280)
   python render.py --range 0 45 --res 512 --out frames/seed --movie   # frames + seed.mp4
+  python render.py --range 0 289 --res 4096 --ss 2 --fps 60 --audio score/mix_stereo.wav \
+                   --stream another_distraction_4k60.mp4                # 4K60 HEVC, no PNGs
 """
 import argparse, json, math, os, sys, time
 from pathlib import Path
@@ -201,6 +203,31 @@ def contact_sheet(images, labels, out, cols=4):
     sheet.save(out)
 
 
+def stream_movie(r, times, out, fps, codec, audio):
+    """Render straight into ffmpeg's stdin: nothing touches the disk but the movie."""
+    import subprocess
+    from movie import ffmpeg_exe, CODECS
+    ext, args = CODECS[codec]
+    cmd = [ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+           "-s", f"{r.w}x{r.h}", "-framerate", str(fps), "-i", "-"]
+    if audio:
+        cmd += ["-ss", f"{times[0]:.6f}", "-i", str(audio), "-map", "0:v", "-map", "1:a", "-shortest"]
+        cmd += ["-c:a", "pcm_s24le"] if codec == "prores" else ["-c:a", "aac", "-b:a", "320k"]
+    if ext == ".mp4":
+        args = args + ["-movflags", "+faststart"]
+    ff = subprocess.Popen(cmd + args + [str(out)], stdin=subprocess.PIPE)
+    t0 = time.time()
+    for i, t in enumerate(times):
+        ff.stdin.write(r.frame(t).tobytes())
+        done = i + 1
+        eta = (time.time() - t0) / done * (len(times) - done)
+        print(f"t={t:7.2f}s  frame {done}/{len(times)}  {time.time() - t0:7.0f}s elapsed  ~{eta / 60:5.0f} min left", flush=True)
+    ff.stdin.close()
+    if ff.wait():
+        sys.exit("ffmpeg failed")
+    print(f"{out}  ({len(times)} frames at {fps:g}fps, {codec})")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", default=str(ROOT / "params.json"))
@@ -215,10 +242,16 @@ def main():
     ap.add_argument("--cols", type=int, default=4)
     ap.add_argument("--movie", nargs="?", const="h264", choices=["h264", "hevc", "prores"],
                     help="after a --range render, stitch the frames into a movie (default h264)")
-    ap.add_argument("--audio", help="with --movie: soundtrack to lay in (e.g. score/mix_stereo.wav)")
+    ap.add_argument("--audio", help="with --movie/--stream: soundtrack to lay in (e.g. score/mix_stereo.wav)")
+    ap.add_argument("--fps", type=float, help="override output.fps (e.g. 60)")
+    ap.add_argument("--stream", metavar="MOVIE",
+                    help="with --range: pipe frames straight into this movie file, no PNGs on disk "
+                         "(codec from --movie, default hevc). For 4K+: a PNG per frame is ~15 MB.")
     a = ap.parse_args()
 
     P = json.loads(Path(a.params).read_text())
+    if a.fps:
+        P["output"]["fps"] = a.fps
     res = a.res or P["output"]["preview_res"]
     ss = a.ss or P["output"]["supersample"]
     proj = a.proj or P["output"]["projection"]
@@ -229,6 +262,10 @@ def main():
         times = [a.range[0] + i / fps for i in range(int(round((a.range[1] - a.range[0]) * fps)) + 1)]
     else:
         times = a.times or [0.0]
+
+    if a.stream:
+        stream_movie(r, times, a.stream, P["output"]["fps"], a.movie or "hevc", a.audio)
+        return
 
     imgs = []
     os.makedirs(a.out, exist_ok=True)

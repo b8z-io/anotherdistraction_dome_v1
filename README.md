@@ -126,6 +126,11 @@ python render.py --times 40 --proj equirect --res 2048 --out frames/vr
 python render.py --range 180 289 --proj reel --res 1280 --ss 1 --out frames/reel
 python movie.py frames/reel --audio score/mix_stereo.wav --size-mb 30 --fade-in 1
 # full Instagram quality on a fast machine: --res 1920 --ss 2 (1080x1920)
+
+# 4K60 domemaster master with sound, streamed straight into HEVC (no PNGs —
+# at 4096² those are ~15 MB each, ~250 GB for the piece). ~2–4 GB result.
+python render.py --range 0 289 --res 4096 --ss 2 --fps 60 \
+    --audio score/mix_stereo.wav --stream another_distraction_4k60.mp4
 ```
 
 ### Stitching frames into a movie
