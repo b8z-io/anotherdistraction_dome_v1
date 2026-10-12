@@ -77,7 +77,7 @@ precision (invisible), but nothing accumulates, so they never drift apart.
 | `timeline.py` | The shared timeline: growth front, camera pose, tangent ribbons, landing flashes, colour spread — all pure functions of time. |
 | `score.py` | The procedural soundtrack, generated from the timeline: stereo mix, AmbiX (first-order ambisonics) for dome speaker arrays, and stems. |
 | `tools/make_quote.py` | Typesets the credo cards into `assets/text/quote.png` (glyphs + legibility halo) for the dome and the playground. |
-| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4). `softly/` holds the four `[softly]` takes; take 3 is split into one clip per card (`line1..6.wav`; `lines.json` records provenance and durations). The earlier neutral takes are `take1..4.mp3`. |
+| `assets/voice/` | The credo in Batesy's ElevenLabs voice (Eleven v4). `whisper/` holds each verse generated on its own with `[softly]` (four takes per verse, `v<verse>_<take>.mp3`) — in one long generation v4 only whispers the first verse. The quietest, most whispered take of each verse is levelled to −29 dBFS and written as `line1..6.wav` (`lines.json` records which). Earlier takes: `softly/` (whole credo, first verse whispered) and `take1..4.mp3` (neutral). |
 | `tools/split_voice.py` | Splits a narration take at its pauses into `line1..6.wav` and re-times the credo cards in `params.json` to fit. |
 | `assets/fonts/` | EB Garamond (SIL Open Font License, see `OFL.txt`). |
 | `lattice.py` | Builds the growth graph from `params.json`: a seeded shortest-path tree on a sparse cubic lattice, so every branch connects back to the seed and growth travels along branches. Run it on its own to print stats. |
@@ -341,6 +341,7 @@ tangent, panned to where it appears on the dome (separate stems).
 
 ## Version history
 
+* **Full piece v1.4** — every verse of the credo whispered (each verse generated separately, levelled to match); cards re-timed.
 * **Full piece v1.3** — depth of field: a bubble of focus follows the newest comet and racks to each new one (render.py, playground, parity-tested); credo set in Space Grotesk (font is a parameter, 12 OFL options); `render.py --fps / --stream`.
 * **Full piece v1.2** — credo re-voiced in Eleven v4 `[softly]` mode (take 3), cards re-timed to it; `--proj reel` 9:16 phone view; `movie.py --size-mb / --fade-in`; `tools/split_voice.py`.
 

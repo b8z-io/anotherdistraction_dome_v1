@@ -1,11 +1,19 @@
 {
- "take": "assets/voice/softly/take3.mp3 \u2014 [softly] mode (ElevenLabs flow KGMAAl4ihCmY9ISOk33E, generation KHXqvStjY5J2C50YDJXW, eleven_v4, voice Batesy)",
+ "take": [
+  "assets/voice/whisper/v1_4.mp3",
+  "assets/voice/whisper/v2_2.mp3",
+  "assets/voice/whisper/v3_3.mp3",
+  "assets/voice/whisper/v4_4.mp3",
+  "assets/voice/whisper/v5_2.mp3",
+  "assets/voice/whisper/v6_1.mp3"
+ ],
+ "level_db": -29.0,
  "durations": [
-  2.96,
-  6.2,
-  7.51,
-  3.43,
-  2.63,
-  1.47
+  3.03,
+  6.86,
+  8.2,
+  3.84,
+  3.11,
+  1.76
  ]
 }

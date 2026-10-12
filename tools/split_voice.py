@@ -3,6 +3,9 @@
 
   python tools/split_voice.py assets/voice/softly/take3.mp3            # split + re-time params.json
   python tools/split_voice.py take.mp3 --dry-run                        # just print what it found
+  python tools/split_voice.py v1.mp3 v2.mp3 v3.mp3 v4.mp3 v5.mp3 v6.mp3 --level-db -29
+        # one file per card (e.g. each verse generated on its own so an Eleven v4
+        # [softly] tag holds for every verse), each levelled to the same loudness
 
 The take must read the cards in order with a clear pause between them (an
 ElevenLabs [pause] tag is plenty). The N-1 longest silences become the cut
@@ -54,7 +57,8 @@ def silences(x, floor_db=38, min_s=0.18, hop_s=0.01):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("take")
+    ap.add_argument("take", nargs="+", help="one take of the whole credo, or one file per card")
+    ap.add_argument("--level-db", type=float, help="level every clip to this RMS (dBFS) so the verses match")
     ap.add_argument("--params", default=str(ROOT / "params.json"))
     ap.add_argument("--lead", type=float, default=0.7)
     ap.add_argument("--hold", type=float, default=1.6)
@@ -66,24 +70,42 @@ def main():
 
     P = json.loads(Path(a.params).read_text())
     cards = P["quote"]["cards"]
-    x = decode(a.take)
-    every, gaps = silences(x)
-    cuts = sorted(sorted(gaps, key=lambda g: g[1] - g[0])[-(len(cards) - 1):])
-    assert len(cuts) == len(cards) - 1, f"found {len(gaps)} pauses, need {len(cards) - 1}"
-    head = every[0][1] if every and every[0][0] == 0 else 0.0
-    tail = every[-1][0] if every and every[-1][2] and every[-1][0] > 0 else len(x) / SR
-    bounds = [head] + [v for c in cuts for v in c[:2]] + [tail]
+    def ends(x):
+        every, gaps = silences(x)
+        head = every[0][1] if every and every[0][0] == 0 else 0.0
+        tail = every[-1][0] if every and every[-1][2] and every[-1][0] > 0 else len(x) / SR
+        return every, gaps, head, tail
+
+    if len(a.take) == 1:                      # one take: cut it at its N-1 longest pauses
+        x = decode(a.take[0])
+        every, gaps, head, tail = ends(x)
+        cuts = sorted(sorted(gaps, key=lambda g: g[1] - g[0])[-(len(cards) - 1):])
+        assert len(cuts) == len(cards) - 1, f"found {len(gaps)} pauses, need {len(cards) - 1}"
+        bounds = [head] + [v for c in cuts for v in c[:2]] + [tail]
+        sources = [(x, bounds[2 * k], bounds[2 * k + 1], a.take[0]) for k in range(len(cards))]
+    else:                                     # one file per card: trim each to its speech
+        assert len(a.take) == len(cards), f"{len(a.take)} files for {len(cards)} cards"
+        sources = []
+        for f in a.take:
+            x = decode(f)
+            _, _, head, tail = ends(x)
+            sources.append((x, head, tail, f))
     pre, post, fade = 0.04, 0.15, 0.02
     durs = []
     for k, c in enumerate(cards):
-        s, e = bounds[2 * k], bounds[2 * k + 1]
+        x, s, e, src = sources[k]
         i0, i1 = max(0, int((s - pre) * SR)), min(len(x), int((e + post) * SR))
         clip = x[i0:i1].copy()
+        if a.level_db is not None:            # match loudness over the speech itself
+            sp = x[int(s * SR):int(e * SR)]
+            clip *= 10 ** (a.level_db / 20) / max(float(np.sqrt((sp ** 2).mean())), 1e-6)
+            if np.abs(clip).max() > 0.89:     # keep 1 dB of headroom
+                clip *= 0.89 / np.abs(clip).max()
         nf = int(fade * SR)
         clip[:nf] *= np.linspace(0, 1, nf)
         clip[-nf:] *= np.linspace(1, 0, nf)
         durs.append(round(len(clip) / SR, 2))
-        print(f"line{k + 1}: {s:6.2f}–{e:6.2f}s in the take  ->  {durs[-1]:.2f}s clip   {' / '.join(c['rows'])}")
+        print(f"line{k + 1}: {Path(src).name} {s:6.2f}–{e:6.2f}s  ->  {durs[-1]:.2f}s clip, peak {20 * np.log10(np.abs(clip).max()):.1f} dB   {' / '.join(c['rows'])}")
         if not a.dry_run:
             with wave.open(str(ROOT / c["voice"]), "wb") as w:
                 w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
@@ -105,9 +127,9 @@ def main():
     if not a.dry_run:
         Path(a.params).write_text(json.dumps(P, indent=2) + "\n")
         meta = ROOT / "assets" / "voice" / "lines.json"
-        take = Path(a.take).resolve()
-        take = str(take.relative_to(ROOT)) if take.is_relative_to(ROOT) else a.take
-        meta.write_text(json.dumps({"take": take, "durations": durs}, indent=1) + "\n")
+        rel = lambda f: str(Path(f).resolve().relative_to(ROOT)) if Path(f).resolve().is_relative_to(ROOT) else f
+        meta.write_text(json.dumps({"take": [rel(f) for f in a.take] if len(a.take) > 1 else rel(a.take[0]),
+                                    "level_db": a.level_db, "durations": durs}, indent=1) + "\n")
 
 
 if __name__ == "__main__":
