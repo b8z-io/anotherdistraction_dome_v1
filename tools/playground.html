@@ -1598,7 +1598,7 @@ body.showhelp .help { display: block; }
     ]
   },
   "dof": {
-    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that softness creeps in gently (eased) over the next `falloff` units, up to max_deg of blur, and out-of-focus parts dim by up to `dim`. Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show.",
+    "_note": "Focus follows the newest coloured blob (its head in flight, then where it landed) through 3D space. Every part of the lattice within focus_radius of it is sharp; beyond that softness creeps in gently (eased) over the next `falloff` units, up to max_deg of blur, and out-of-focus parts dim by up to `dim`. Distances are world units: one lattice cell = 2. Focus glides to each new blob over rack_s; strength_keys turn the effect up and down over the show. Switched off (strength 0 throughout) from v1.5; set strength_keys back to e.g. [[0,0],[50,0],[53,1],[214,1],[218,0],[400,0]] to bring it back.",
     "focus_radius": 8.0,
     "falloff": 30.0,
     "max_deg": 0.6,
@@ -1607,22 +1607,6 @@ body.showhelp .help { display: block; }
     "strength_keys": [
       [
         0,
-        0
-      ],
-      [
-        50,
-        0
-      ],
-      [
-        53,
-        1
-      ],
-      [
-        214,
-        1
-      ],
-      [
-        218,
         0
       ],
       [

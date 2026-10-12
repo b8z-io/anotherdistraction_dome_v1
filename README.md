@@ -341,6 +341,7 @@ tangent, panned to where it appears on the dome (separate stems).
 
 ## Version history
 
+* **Full piece v1.5** — depth of field switched off (`dof.strength_keys` all 0); everything else as v1.4. The code stays, so it can come back with one setting.
 * **Full piece v1.4** — every verse of the credo whispered (each verse generated separately, levelled to match); cards re-timed.
 * **Full piece v1.3** — depth of field: a bubble of focus follows the newest comet and racks to each new one (render.py, playground, parity-tested); credo set in Space Grotesk (font is a parameter, 12 OFL options); `render.py --fps / --stream`.
 * **Full piece v1.2** — credo re-voiced in Eleven v4 `[softly]` mode (take 3), cards re-timed to it; `--proj reel` 9:16 phone view; `movie.py --size-mb / --fade-in`; `tools/split_voice.py`.
